@@ -32,6 +32,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Stop extraction request
+  if (message.type === 'STOP_EXTRACTION') {
+    console.log('[Content Script] Stop extraction requested');
+
+    // Call stopExtraction function from extractor service
+    if (typeof stopExtraction === 'function') {
+      stopExtraction();
+      sendResponse({ success: true, message: 'Stop signal sent' });
+    } else {
+      console.warn('[Content Script] stopExtraction function not available');
+      sendResponse({ success: false, error: 'Stop function not available' });
+    }
+
+    return true;
+  }
+
   // Ping request to check if content script is loaded
   if (message.type === 'PING') {
     sendResponse({ success: true, message: 'Content script is ready' });

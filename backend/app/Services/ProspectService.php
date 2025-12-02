@@ -45,14 +45,10 @@ class ProspectService
             });
         }
 
-        // Search in name, company, headline
+        // Search in full_name only
         if (isset($filters['search']) && !empty($filters['search'])) {
             $search = $filters['search'];
-            $query->where(function ($q) use ($search) {
-                $q->where('full_name', 'LIKE', "%{$search}%")
-                  ->orWhere('company', 'LIKE', "%{$search}%")
-                  ->orWhere('headline', 'LIKE', "%{$search}%");
-            });
+            $query->where('full_name', 'LIKE', "%{$search}%");
         }
 
         // Sort by newest first

@@ -161,6 +161,15 @@ body {
   background-color: #005582;
 }
 
+.btn-danger {
+  background-color: #dc3545;
+  color: white;
+}
+
+.btn-danger:hover {
+  background-color: #c82333;
+}
+
 .btn-large {
   width: 100%;
   padding: 12px 16px;

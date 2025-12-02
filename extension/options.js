@@ -5,13 +5,32 @@
  */
 
 // DOM elements
-let loginSection;
+let authSection;
 let settingsSection;
+
+// Tab elements
+let loginTabBtn;
+let signupTabBtn;
+let loginTab;
+let signupTab;
+
+// Login form elements
 let loginForm;
-let emailInput;
-let passwordInput;
+let loginEmailInput;
+let loginPasswordInput;
 let loginBtn;
 let loginMessage;
+
+// Signup form elements
+let signupForm;
+let signupNameInput;
+let signupEmailInput;
+let signupPasswordInput;
+let signupPasswordConfirmInput;
+let signupBtn;
+let signupMessage;
+
+// Settings elements
 let currentUserEl;
 let logoutBtn;
 let apiUrlInput;
@@ -29,13 +48,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('[Options] Initializing...');
 
   // Get DOM elements
-  loginSection = document.getElementById('login-section');
+  authSection = document.getElementById('auth-section');
   settingsSection = document.getElementById('settings-section');
+
+  // Tab elements
+  loginTabBtn = document.getElementById('login-tab-btn');
+  signupTabBtn = document.getElementById('signup-tab-btn');
+  loginTab = document.getElementById('login-tab');
+  signupTab = document.getElementById('signup-tab');
+
+  // Login form elements
   loginForm = document.getElementById('login-form');
-  emailInput = document.getElementById('email');
-  passwordInput = document.getElementById('password');
+  loginEmailInput = document.getElementById('login-email');
+  loginPasswordInput = document.getElementById('login-password');
   loginBtn = document.getElementById('login-btn');
   loginMessage = document.getElementById('login-message');
+
+  // Signup form elements
+  signupForm = document.getElementById('signup-form');
+  signupNameInput = document.getElementById('signup-name');
+  signupEmailInput = document.getElementById('signup-email');
+  signupPasswordInput = document.getElementById('signup-password');
+  signupPasswordConfirmInput = document.getElementById('signup-password-confirm');
+  signupBtn = document.getElementById('signup-btn');
+  signupMessage = document.getElementById('signup-message');
+
+  // Settings elements
   currentUserEl = document.getElementById('current-user');
   logoutBtn = document.getElementById('logout-btn');
   apiUrlInput = document.getElementById('api-url');
@@ -47,7 +85,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadingOverlay = document.getElementById('loading-overlay');
 
   // Set up event listeners
+  loginTabBtn.addEventListener('click', () => switchTab('login'));
+  signupTabBtn.addEventListener('click', () => switchTab('signup'));
   loginForm.addEventListener('submit', handleLoginSubmit);
+  signupForm.addEventListener('submit', handleSignupSubmit);
   logoutBtn.addEventListener('click', handleLogoutClick);
   saveApiUrlBtn.addEventListener('click', handleSaveApiUrl);
   saveLimitBtn.addEventListener('click', handleSaveLimit);
@@ -61,7 +102,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (authenticated) {
     await showSettingsSection();
   } else {
-    showLoginSection();
+    showAuthSection();
   }
 
   console.log('[Options] Initialization complete');
@@ -79,10 +120,38 @@ async function loadSavedSettings() {
 }
 
 /**
- * Show login section
+ * Switch between login and signup tabs
+ * @param {string} tab - 'login' or 'signup'
  */
-function showLoginSection() {
-  loginSection.classList.remove('hidden');
+function switchTab(tab) {
+  if (tab === 'login') {
+    // Activate login tab
+    loginTabBtn.classList.add('active');
+    signupTabBtn.classList.remove('active');
+    loginTab.classList.add('active');
+    signupTab.classList.remove('active');
+
+    // Clear signup form
+    signupForm.reset();
+    hideMessage(signupMessage);
+  } else if (tab === 'signup') {
+    // Activate signup tab
+    loginTabBtn.classList.remove('active');
+    signupTabBtn.classList.add('active');
+    loginTab.classList.remove('active');
+    signupTab.classList.add('active');
+
+    // Clear login form
+    loginForm.reset();
+    hideMessage(loginMessage);
+  }
+}
+
+/**
+ * Show auth section (login/signup)
+ */
+function showAuthSection() {
+  authSection.classList.remove('hidden');
   settingsSection.classList.add('hidden');
 }
 
@@ -90,7 +159,7 @@ function showLoginSection() {
  * Show settings section
  */
 async function showSettingsSection() {
-  loginSection.classList.add('hidden');
+  authSection.classList.add('hidden');
   settingsSection.classList.remove('hidden');
 
   // Display user email
@@ -106,8 +175,8 @@ async function showSettingsSection() {
 async function handleLoginSubmit(event) {
   event.preventDefault();
 
-  const email = emailInput.value.trim();
-  const password = passwordInput.value;
+  const email = loginEmailInput.value.trim();
+  const password = loginPasswordInput.value;
 
   if (!email || !password) {
     showMessage(loginMessage, 'Please enter email and password', 'error');
@@ -128,7 +197,7 @@ async function handleLoginSubmit(event) {
     showMessage(loginMessage, 'Login successful!', 'success');
 
     // Clear form
-    passwordInput.value = '';
+    loginPasswordInput.value = '';
 
     // Switch to settings view after short delay
     setTimeout(() => {
@@ -146,6 +215,80 @@ async function handleLoginSubmit(event) {
 }
 
 /**
+ * Handle signup form submit
+ */
+async function handleSignupSubmit(event) {
+  event.preventDefault();
+
+  const name = signupNameInput.value.trim();
+  const email = signupEmailInput.value.trim();
+  const password = signupPasswordInput.value;
+  const passwordConfirm = signupPasswordConfirmInput.value;
+
+  // Validation
+  if (!name || !email || !password || !passwordConfirm) {
+    showMessage(signupMessage, 'Please fill in all fields', 'error');
+    return;
+  }
+
+  if (password !== passwordConfirm) {
+    showMessage(signupMessage, 'Passwords do not match', 'error');
+    return;
+  }
+
+  if (password.length < 8) {
+    showMessage(signupMessage, 'Password must be at least 8 characters', 'error');
+    return;
+  }
+
+  try {
+    signupBtn.disabled = true;
+    signupBtn.textContent = 'Creating account...';
+    showLoading(true);
+
+    // Call register endpoint
+    const response = await register(name, email, password, passwordConfirm);
+
+    console.log('[Options] Signup successful:', response);
+
+    // Store token and email
+    await setAuthToken(response.token);
+    await setUserEmail(email);
+
+    // Show success message
+    showMessage(signupMessage, 'Account created successfully!', 'success');
+
+    // Clear form
+    signupForm.reset();
+
+    // Switch to settings view after short delay
+    setTimeout(() => {
+      showSettingsSection();
+    }, 1500);
+
+  } catch (error) {
+    console.error('[Options] Signup error:', error);
+
+    // Handle validation errors
+    let errorMessage = 'Signup failed: ' + error.message;
+
+    if (error.errors) {
+      // Laravel validation errors
+      const errorMessages = Object.values(error.errors).flat();
+      if (errorMessages.length > 0) {
+        errorMessage = errorMessages.join(', ');
+      }
+    }
+
+    showMessage(signupMessage, errorMessage, 'error');
+  } finally {
+    signupBtn.disabled = false;
+    signupBtn.textContent = 'Sign Up';
+    showLoading(false);
+  }
+}
+
+/**
  * Handle logout button click
  */
 async function handleLogoutClick() {
@@ -156,12 +299,12 @@ async function handleLogoutClick() {
 
     console.log('[Options] Logout successful');
 
-    // Show login section
-    showLoginSection();
+    // Show auth section
+    showAuthSection();
 
     // Clear login form
-    emailInput.value = '';
-    passwordInput.value = '';
+    loginEmailInput.value = '';
+    loginPasswordInput.value = '';
 
     showMessage(loginMessage, 'Logged out successfully', 'success');
 

@@ -24,10 +24,7 @@ return new class extends Migration
             // LinkedIn profile information
             $table->string('linkedin_id')->nullable(); // LinkedIn's internal ID
             $table->string('full_name'); // Person's name
-            $table->string('headline')->nullable(); // Job title / headline
             $table->string('profile_url')->unique(); // LinkedIn profile URL (unique identifier)
-            $table->string('location')->nullable(); // City, Country
-            $table->string('company')->nullable(); // Current company
             $table->string('profile_image_url')->nullable(); // Profile picture
 
             // Connection status
@@ -37,10 +34,6 @@ return new class extends Migration
                 'connected',
                 'withdrawn'
             ])->default('not_connected');
-
-            // Metadata
-            $table->text('notes')->nullable(); // User's notes about this prospect
-            $table->timestamp('last_contacted_at')->nullable(); // Last time we sent a message
 
             $table->timestamps();
 

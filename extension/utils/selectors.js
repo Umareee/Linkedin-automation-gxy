@@ -23,10 +23,13 @@ const LINKEDIN_SELECTORS = {
     // Individual profile card (each search result)
     PROFILE_CARD: '.reusable-search__result-container',
 
-    // Profile link (contains LinkedIn URL)
-    PROFILE_LINK: 'a.app-aware-link[href*="/in/"]',
+    // Profile link (contains LinkedIn URL) - Uses stable data-view-name attribute
+    PROFILE_LINK: 'a[data-view-name="search-result-lockup-title"][href*="/in/"]',
 
-    // Full name
+    // Fallback profile link selector
+    PROFILE_LINK_ALT: 'a.app-aware-link[href*="/in/"]',
+
+    // Full name (extract from link text content)
     PROFILE_NAME: '.entity-result__title-text a span[aria-hidden="true"]',
 
     // Alternative name selector (fallback)
@@ -41,8 +44,9 @@ const LINKEDIN_SELECTORS = {
     // Company name (sometimes part of headline)
     COMPANY: '.entity-result__primary-subtitle',
 
-    // Profile image
-    PROFILE_IMAGE: 'img.EntityPhoto-circle-5',
+    // Profile image (matched by alt attribute to person's name)
+    // Use: img[alt="${personName}"]
+    PROFILE_IMAGE: 'img[alt]',
 
     // Alternative image selector
     PROFILE_IMAGE_ALT: '.presence-entity__image',
@@ -53,7 +57,8 @@ const LINKEDIN_SELECTORS = {
     // Pagination
     PAGINATION: {
       CONTAINER: '.artdeco-pagination',
-      NEXT_BUTTON: 'button[aria-label="Next"]',
+      NEXT_BUTTON: 'button[data-testid="pagination-controls-next-button-visible"]',
+      NEXT_BUTTON_ALT: 'button[aria-label="Next"]',
       PREV_BUTTON: 'button[aria-label="Previous"]',
       PAGE_BUTTON: '.artdeco-pagination__indicator button'
     }

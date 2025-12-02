@@ -62,6 +62,23 @@ async function apiCall(endpoint, method = 'GET', body = null) {
 }
 
 /**
+ * Register new user account
+ * @param {string} name - User's full name
+ * @param {string} email - User email
+ * @param {string} password - User password
+ * @param {string} passwordConfirmation - Password confirmation
+ * @returns {Promise<object>} Response with user and token
+ */
+async function register(name, email, password, passwordConfirmation) {
+  return await apiCall('/register', 'POST', {
+    name,
+    email,
+    password,
+    password_confirmation: passwordConfirmation
+  });
+}
+
+/**
  * Login to backend
  * @param {string} email - User email
  * @param {string} password - User password

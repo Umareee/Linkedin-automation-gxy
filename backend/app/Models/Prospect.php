@@ -25,25 +25,10 @@ class Prospect extends Model
         'user_id',
         'linkedin_id',
         'full_name',
-        'headline',
         'profile_url',
-        'location',
-        'company',
         'profile_image_url',
         'connection_status',
-        'notes',
-        'last_contacted_at',
     ];
-
-    /**
-     * Get the attributes that should be cast.
-     */
-    protected function casts(): array
-    {
-        return [
-            'last_contacted_at' => 'datetime',
-        ];
-    }
 
     /**
      * Get the user that owns this prospect.

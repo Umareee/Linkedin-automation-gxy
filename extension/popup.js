@@ -10,6 +10,7 @@ let loggedInState;
 let userEmailEl;
 let logoutBtn;
 let extractBtn;
+let stopBtn;
 let limitInput;
 let progressSection;
 let currentCountEl;
@@ -32,6 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   userEmailEl = document.getElementById('user-email');
   logoutBtn = document.getElementById('logout-btn');
   extractBtn = document.getElementById('extract-btn');
+  stopBtn = document.getElementById('stop-btn');
   limitInput = document.getElementById('limit-input');
   progressSection = document.getElementById('progress-section');
   currentCountEl = document.getElementById('current-count');
@@ -46,6 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('open-options').addEventListener('click', openOptions);
   logoutBtn.addEventListener('click', handleLogoutClick);
   extractBtn.addEventListener('click', handleExtractClick);
+  stopBtn.addEventListener('click', handleStopClick);
 
   // Load saved extraction limit
   const savedLimit = await getExtractionLimit();
@@ -118,21 +121,55 @@ async function handleLogoutClick() {
 }
 
 /**
+ * Handle stop button click
+ */
+async function handleStopClick() {
+  console.log('[Popup] Stop button clicked');
+
+  try {
+    // Disable stop button
+    stopBtn.disabled = true;
+    stopBtn.textContent = 'Stopping...';
+
+    // Get active tab
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    if (tab) {
+      // Send stop message to content script
+      chrome.tabs.sendMessage(tab.id, {
+        type: 'STOP_EXTRACTION'
+      }, (response) => {
+        if (!chrome.runtime.lastError) {
+          console.log('[Popup] Stop signal sent successfully');
+          showStatus('Extraction stopped by user', 'info');
+        }
+      });
+    }
+  } catch (error) {
+    console.error('[Popup] Error stopping extraction:', error);
+  }
+}
+
+/**
  * Handle extract button click
  */
 async function handleExtractClick() {
   console.log('[Popup] Extract button clicked');
 
   try {
-    // Disable button during extraction
+    // Disable extract button, enable stop button
     extractBtn.disabled = true;
-    extractBtn.textContent = 'Extracting...';
+    extractBtn.classList.add('hidden');
+    stopBtn.classList.remove('hidden');
+    stopBtn.disabled = false;
+    stopBtn.textContent = 'Stop Extraction';
 
     // Get limit
     const limit = parseInt(limitInput.value);
 
     if (limit < 1 || limit > 100) {
       showStatus('Please enter a limit between 1 and 100', 'error');
+      resetButtons();
       return;
     }
 
@@ -204,19 +241,28 @@ async function handleExtractClick() {
         showStatus('Extraction failed: ' + response.error, 'error');
       }
 
-      // Reset button
+      // Reset buttons
       showProgress(false);
-      extractBtn.disabled = false;
-      extractBtn.textContent = 'Extract Prospects';
+      resetButtons();
     });
 
   } catch (error) {
     console.error('[Popup] Extraction error:', error);
     showStatus('Error: ' + error.message, 'error');
     showProgress(false);
-    extractBtn.disabled = false;
-    extractBtn.textContent = 'Extract Prospects';
+    resetButtons();
   }
+}
+
+/**
+ * Reset extract/stop buttons to initial state
+ */
+function resetButtons() {
+  extractBtn.disabled = false;
+  extractBtn.classList.remove('hidden');
+  stopBtn.classList.add('hidden');
+  stopBtn.disabled = false;
+  stopBtn.textContent = 'Stop Extraction';
 }
 
 /**
