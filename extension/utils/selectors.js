@@ -1,90 +1,145 @@
 /**
  * LinkedIn DOM Selectors
  *
- * These selectors are built specifically for extracting prospect data
- * from LinkedIn search results pages. Inspired by patterns from previous
- * implementation but tailored for our specific extraction needs.
- *
- * NOTE: LinkedIn may update their DOM structure. If extraction fails,
- * inspect the page and update these selectors accordingly.
+ * Based on reference extension analysis - exact selectors that work.
  *
  * @module utils/selectors
  */
 
 const LINKEDIN_SELECTORS = {
   /**
+   * Main Profile Action Container
+   * CRITICAL: Must find the correct container to avoid clicking duplicate buttons
+   */
+  PROFILE: {
+    // Container selectors (try in order)
+    ACTION_CONTAINERS: [
+      '.pv-top-card-v2-ctas',
+      '.pvs-profile-actions',
+      '[class*="profile-actions"]'
+    ],
+
+    // Validation: container must have at least one of these buttons
+    ACTION_BUTTON_CHECK: 'button[aria-label*="Message"], button[aria-label*="Connect"], button[aria-label*="Follow"], button[aria-label*="More"]',
+
+    // Fallback container detection
+    FALLBACK_SECTIONS: 'section, div[class*="pv-top"]',
+
+    // Connect button (visible state - primary button)
+    CONNECT_BUTTON: 'button[aria-label*="Invite"][aria-label*="connect"].artdeco-button--primary',
+
+    // More actions button
+    MORE_BUTTON: 'button[aria-label="More actions"]',
+
+    // Connect option in dropdown (div with role="button", appears in body not container)
+    DROPDOWN_CONNECT: '.artdeco-dropdown__content div[aria-label*="Invite"][aria-label*="connect"][role="button"]',
+
+    // Follow option in dropdown
+    DROPDOWN_FOLLOW: '.artdeco-dropdown__content div[aria-label*="Follow"][role="button"]',
+
+    // Message button
+    MESSAGE_BUTTON: 'button[aria-label*="Message"]',
+
+    // Follow button (visible state)
+    FOLLOW_BUTTON: 'button[aria-label*="Follow"]',
+
+    // Pending connection indicator
+    PENDING_BUTTON: 'button[aria-label*="Pending"]'
+  },
+
+  /**
+   * Connection Request Modal
+   */
+  CONNECTION_MODAL: {
+    // Add a note button
+    ADD_NOTE_BUTTON: 'button[aria-label="Add a note"]',
+
+    // Send without a note button
+    SEND_WITHOUT_NOTE: 'button[aria-label="Send without a note"]',
+
+    // Note textarea (after clicking Add a note)
+    NOTE_TEXTAREA: 'textarea[name="message"]',
+
+    // Send invitation button (after adding note)
+    SEND_BUTTON: 'button[aria-label="Send invitation"]',
+
+    // Dismiss/close modal button
+    DISMISS_BUTTON: 'button[aria-label="Dismiss"]'
+  },
+
+  /**
+   * Message Compose
+   */
+  MESSAGE: {
+    // Message textbox (contenteditable div)
+    TEXTBOX: '.msg-form__contenteditable[contenteditable="true"][role="textbox"]',
+
+    // Close button (SVG inside button)
+    CLOSE_BUTTON_SVG: 'button.msg-overlay-bubble-header__control svg[data-test-icon="close-small"]',
+
+    // Close button fallback (button class)
+    CLOSE_BUTTON: 'button.msg-overlay-bubble-header__control'
+  },
+
+  /**
    * Search Results Page Selectors
-   * Used on: linkedin.com/search/results/people/
    */
   SEARCH: {
-    // Main container for all search results
     RESULTS_CONTAINER: '.search-results-container',
-
-    // Individual profile card (each search result)
     PROFILE_CARD: '.reusable-search__result-container',
-
-    // Profile link (contains LinkedIn URL) - Uses stable data-view-name attribute
     PROFILE_LINK: 'a[data-view-name="search-result-lockup-title"][href*="/in/"]',
-
-    // Fallback profile link selector
     PROFILE_LINK_ALT: 'a.app-aware-link[href*="/in/"]',
-
-    // Full name (extract from link text content)
     PROFILE_NAME: '.entity-result__title-text a span[aria-hidden="true"]',
-
-    // Alternative name selector (fallback)
     PROFILE_NAME_ALT: '.entity-result__title-text .t-roman',
-
-    // Headline (job title)
     HEADLINE: '.entity-result__primary-subtitle',
-
-    // Location
     LOCATION: '.entity-result__secondary-subtitle',
-
-    // Company name (sometimes part of headline)
-    COMPANY: '.entity-result__primary-subtitle',
-
-    // Profile image (matched by alt attribute to person's name)
-    // Use: img[alt="${personName}"]
-    PROFILE_IMAGE: 'img[alt]',
-
-    // Alternative image selector
-    PROFILE_IMAGE_ALT: '.presence-entity__image',
-
-    // Connection degree badge (1st, 2nd, 3rd)
-    DEGREE_BADGE: '.entity-result__badge-text',
-
-    // Pagination
     PAGINATION: {
       CONTAINER: '.artdeco-pagination',
-      NEXT_BUTTON: 'button[data-testid="pagination-controls-next-button-visible"]',
-      NEXT_BUTTON_ALT: 'button[aria-label="Next"]',
-      PREV_BUTTON: 'button[aria-label="Previous"]',
-      PAGE_BUTTON: '.artdeco-pagination__indicator button'
+      NEXT_BUTTON: 'button[aria-label="Next"]',
+      PREV_BUTTON: 'button[aria-label="Previous"]'
     }
   },
 
   /**
-   * Generic selectors that might be useful
+   * My Connections Page Selectors
+   * URL: https://www.linkedin.com/mynetwork/invite-connect/connections/
    */
-  COMMON: {
-    // Loading spinners
-    LOADING_SPINNER: '.artdeco-loader',
+  CONNECTIONS: {
+    // Main container for connections list
+    CONTAINER: '.mn-connections',
+    // Each connection card
+    CONNECTION_CARD: '.mn-connection-card',
+    // Profile link within card
+    PROFILE_LINK: '.mn-connection-card__link',
+    // Name element
+    NAME: '.mn-connection-card__name',
+    // Occupation/headline
+    OCCUPATION: '.mn-connection-card__occupation',
+    // Profile image
+    PROFILE_IMAGE: '.mn-connection-card__picture img, .presence-entity__image',
+    // Load more button (if exists)
+    LOAD_MORE_BUTTON: 'button.scaffold-finite-scroll__load-button',
+    // Alternative selectors for newer LinkedIn UI
+    ALT_PROFILE_LINK: 'a.ember-view[href*="/in/"]',
+    ALT_CARD: 'li.mn-connection-card'
+  },
 
-    // Empty results message
-    NO_RESULTS: '.search-results__no-results',
-
-    // Error messages
-    ERROR_MESSAGE: '.artdeco-inline-feedback--error'
+  /**
+   * Current User Detection (for account verification)
+   */
+  CURRENT_USER: {
+    ME_BUTTON: '.global-nav__me-trigger',
+    ME_BUTTON_ALT: '.global-nav__me',
+    DROPDOWN_PROFILE: '.global-nav__me-content a[href*="/in/"]',
+    FEED_PROFILE: '.feed-identity-module a[href*="/in/"]'
   }
 };
 
-// Make selectors available globally for content scripts
+// Make selectors available globally
 if (typeof window !== 'undefined') {
   window.LINKEDIN_SELECTORS = LINKEDIN_SELECTORS;
 }
 
-// Export for potential module usage
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = LINKEDIN_SELECTORS;
 }

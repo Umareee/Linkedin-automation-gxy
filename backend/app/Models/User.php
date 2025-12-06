@@ -25,9 +25,16 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
+        'linkedin_id',
         'name',
         'email',
-        'password',
+        'profile_url',
+        'profile_image_url',
+        'oauth_access_token',
+        'oauth_refresh_token',
+        'token_expires_at',
+        'is_active',
+        'last_login_at',
     ];
 
     /**
@@ -36,8 +43,8 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $hidden = [
-        'password',
-        'remember_token',
+        'oauth_access_token',
+        'oauth_refresh_token',
     ];
 
     /**
@@ -48,8 +55,9 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'token_expires_at' => 'datetime',
+            'last_login_at' => 'datetime',
+            'is_active' => 'boolean',
         ];
     }
 
@@ -102,5 +110,15 @@ class User extends Authenticatable
     public function actionQueue()
     {
         return $this->hasMany(ActionQueue::class);
+    }
+
+    /**
+     * Get all message templates created by this user.
+     *
+     * Templates are reusable messages for campaigns (invitation or direct messages).
+     */
+    public function messageTemplates()
+    {
+        return $this->hasMany(MessageTemplate::class);
     }
 }

@@ -105,5 +105,29 @@ export const prospectService = {
   async bulkImport(prospects) {
     const response = await api.post('/prospects/bulk', { prospects });
     return response.data;
+  },
+
+  /**
+   * Bulk delete prospects
+   * @param {array} prospectIds - Array of prospect IDs to delete
+   * @returns {Promise<object>} Result with deleted count
+   */
+  async bulkDelete(prospectIds) {
+    const response = await api.post('/prospects/bulk-delete', { prospect_ids: prospectIds });
+    return response.data;
+  },
+
+  /**
+   * Bulk attach tags to prospects
+   * @param {array} prospectIds - Array of prospect IDs
+   * @param {array} tagIds - Array of tag IDs to attach
+   * @returns {Promise<object>} Result with updated count
+   */
+  async bulkAttachTags(prospectIds, tagIds) {
+    const response = await api.post('/prospects/bulk-attach-tags', {
+      prospect_ids: prospectIds,
+      tag_ids: tagIds
+    });
+    return response.data;
   }
 };

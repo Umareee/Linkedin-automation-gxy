@@ -33,7 +33,8 @@ class ProspectController extends Controller
      *
      * Query parameters:
      * - connection_status: Filter by status
-     * - tag_id: Filter by tag
+     * - tag_id: Filter by single tag
+     * - tag_ids: Filter by multiple tags (comma-separated)
      * - search: Search in name, company, headline
      * - per_page: Items per page (default: 15)
      *
@@ -42,7 +43,7 @@ class ProspectController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $filters = $request->only(['connection_status', 'tag_id', 'search']);
+        $filters = $request->only(['connection_status', 'tag_id', 'tag_ids', 'search']);
         $perPage = $request->input('per_page', 15);
 
         $prospects = $this->prospectService->getProspects(
@@ -234,6 +235,57 @@ class ProspectController extends Controller
 
         return response()->json([
             'stats' => $stats
+        ]);
+    }
+
+    /**
+     * Bulk delete prospects.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        $request->validate([
+            'prospect_ids' => 'required|array',
+            'prospect_ids.*' => 'required|integer|exists:prospects,id'
+        ]);
+
+        $deleted = $this->prospectService->bulkDelete(
+            $request->user(),
+            $request->input('prospect_ids')
+        );
+
+        return response()->json([
+            'message' => 'Prospects deleted successfully',
+            'deleted' => $deleted
+        ]);
+    }
+
+    /**
+     * Bulk attach tags to prospects.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function bulkAttachTags(Request $request): JsonResponse
+    {
+        $request->validate([
+            'prospect_ids' => 'required|array',
+            'prospect_ids.*' => 'required|integer|exists:prospects,id',
+            'tag_ids' => 'required|array',
+            'tag_ids.*' => 'required|integer|exists:tags,id'
+        ]);
+
+        $updated = $this->prospectService->bulkAttachTags(
+            $request->user(),
+            $request->input('prospect_ids'),
+            $request->input('tag_ids')
+        );
+
+        return response()->json([
+            'message' => 'Tags attached successfully',
+            'updated' => $updated
         ]);
     }
 }

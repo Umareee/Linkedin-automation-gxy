@@ -38,10 +38,21 @@ class ProspectService
             $query->where('connection_status', $filters['connection_status']);
         }
 
-        // Filter by tag
+        // Filter by tag (single tag_id)
         if (isset($filters['tag_id'])) {
             $query->whereHas('tags', function ($q) use ($filters) {
                 $q->where('tags.id', $filters['tag_id']);
+            });
+        }
+
+        // Filter by multiple tags (tag_ids as comma-separated string)
+        if (isset($filters['tag_ids']) && !empty($filters['tag_ids'])) {
+            $tagIds = is_array($filters['tag_ids'])
+                ? $filters['tag_ids']
+                : explode(',', $filters['tag_ids']);
+
+            $query->whereHas('tags', function ($q) use ($tagIds) {
+                $q->whereIn('tags.id', $tagIds);
             });
         }
 
@@ -212,5 +223,46 @@ class ProspectService
             'pending' => $pending,
             'connected' => $connected,
         ];
+    }
+
+    /**
+     * Bulk delete prospects.
+     *
+     * Deletes multiple prospects at once.
+     * Only deletes prospects owned by the user.
+     *
+     * @param User $user
+     * @param array $prospectIds Array of prospect IDs to delete
+     * @return int Number of prospects deleted
+     */
+    public function bulkDelete(User $user, array $prospectIds): int
+    {
+        return Prospect::where('user_id', $user->id)
+            ->whereIn('id', $prospectIds)
+            ->delete();
+    }
+
+    /**
+     * Bulk attach tags to prospects.
+     *
+     * Attaches tags to multiple prospects at once.
+     * Only updates prospects owned by the user.
+     *
+     * @param User $user
+     * @param array $prospectIds Array of prospect IDs
+     * @param array $tagIds Array of tag IDs to attach
+     * @return int Number of prospects updated
+     */
+    public function bulkAttachTags(User $user, array $prospectIds, array $tagIds): int
+    {
+        $prospects = Prospect::where('user_id', $user->id)
+            ->whereIn('id', $prospectIds)
+            ->get();
+
+        foreach ($prospects as $prospect) {
+            $prospect->tags()->syncWithoutDetaching($tagIds);
+        }
+
+        return $prospects->count();
     }
 }

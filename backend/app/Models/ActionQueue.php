@@ -24,6 +24,8 @@ class ActionQueue extends Model
     protected $fillable = [
         'user_id',
         'campaign_id',
+        'campaign_prospect_id',
+        'campaign_step_id',
         'prospect_id',
         'action_type',
         'action_data',
@@ -40,6 +42,7 @@ class ActionQueue extends Model
     protected function casts(): array
     {
         return [
+            'action_data' => 'array',
             'scheduled_for' => 'datetime',
             'executed_at' => 'datetime',
             'retry_count' => 'integer',
@@ -68,6 +71,22 @@ class ActionQueue extends Model
     public function prospect()
     {
         return $this->belongsTo(Prospect::class);
+    }
+
+    /**
+     * Get the campaign prospect this action is for.
+     */
+    public function campaignProspect()
+    {
+        return $this->belongsTo(CampaignProspect::class);
+    }
+
+    /**
+     * Get the campaign step this action is for.
+     */
+    public function campaignStep()
+    {
+        return $this->belongsTo(CampaignStep::class);
     }
 
     /**

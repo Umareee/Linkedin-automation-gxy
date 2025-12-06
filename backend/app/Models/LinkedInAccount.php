@@ -28,9 +28,13 @@ class LinkedInAccount extends Model
         'profile_url',
         'email',
         'profile_image_url',
+        'headline',
+        'location',
         'cookies',
         'is_active',
+        'cookies_valid',
         'last_synced_at',
+        'cookies_updated_at',
     ];
 
     /**
@@ -49,7 +53,9 @@ class LinkedInAccount extends Model
     {
         return [
             'is_active' => 'boolean',
+            'cookies_valid' => 'boolean',
             'last_synced_at' => 'datetime',
+            'cookies_updated_at' => 'datetime',
         ];
     }
 

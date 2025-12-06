@@ -1,0 +1,710 @@
+/**
+ * Action Executor Service
+ *
+ * Executes LinkedIn actions (visit, invite, message, follow) on profile pages.
+ * Based on reference extension implementation - exact working logic.
+ *
+ * @module services/actionExecutor
+ */
+
+/**
+ * Sleep for a specified number of milliseconds
+ * @param {number} ms - Milliseconds to sleep
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Get random delay between min and max
+ * @param {number} min - Minimum milliseconds
+ * @param {number} max - Maximum milliseconds
+ * @returns {number}
+ */
+function getRandomDelay(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+/**
+ * Get the MAIN profile action container
+ * This is critical to avoid clicking wrong buttons (duplicates elsewhere on page)
+ * Based on reference extension: getMainProfileActionContainer()
+ * @returns {Element|null}
+ */
+function getMainProfileActionContainer() {
+  const selectors = window.LINKEDIN_SELECTORS;
+  if (!selectors) {
+    console.error('[ActionExecutor] Selectors not loaded');
+    return null;
+  }
+
+  // Try each container selector
+  const containers = document.querySelectorAll(selectors.PROFILE.ACTION_CONTAINERS.join(', '));
+
+  for (const container of containers) {
+    // Validate: container must have at least one action button
+    const hasActionButtons = container.querySelector(selectors.PROFILE.ACTION_BUTTON_CHECK);
+    if (hasActionButtons) {
+      console.log('[ActionExecutor] Found main profile action container via class selector');
+      return container;
+    }
+  }
+
+  // Fallback 1: look for section that contains both Message and More buttons
+  const sections = document.querySelectorAll(selectors.PROFILE.FALLBACK_SECTIONS);
+  for (const section of sections) {
+    const messageBtn = section.querySelector('button[aria-label*="Message"]');
+    const moreBtn = section.querySelector('button[aria-label*="More"]');
+    if (messageBtn && moreBtn) {
+      console.log('[ActionExecutor] Found main profile action container (section fallback)');
+      return section;
+    }
+  }
+
+  // Fallback 2: Find Message button and get its parent container
+  // LinkedIn sometimes uses randomized class names, so we find buttons directly
+  const messageButton = document.querySelector('button[aria-label*="Message"]');
+  if (messageButton) {
+    // Go up to find a container that also has the More button
+    let parent = messageButton.parentElement;
+    let attempts = 0;
+    while (parent && attempts < 10) {
+      const moreBtn = parent.querySelector('button[aria-label="More actions"], button[aria-label*="More"]');
+      if (moreBtn) {
+        console.log('[ActionExecutor] Found main profile action container (button parent fallback)');
+        return parent;
+      }
+      parent = parent.parentElement;
+      attempts++;
+    }
+
+    // If we found Message but not More in parent, still return a reasonable container
+    const container = messageButton.closest('div[class]');
+    if (container) {
+      console.log('[ActionExecutor] Found main profile action container (message button container)');
+      return container;
+    }
+  }
+
+  // Fallback 3: Find any Connect or Follow button and get container
+  const connectOrFollow = document.querySelector('button[aria-label*="Invite"][aria-label*="connect"], button[aria-label*="Follow"]:not([aria-label*="Following"])');
+  if (connectOrFollow) {
+    let parent = connectOrFollow.parentElement;
+    let attempts = 0;
+    while (parent && attempts < 10) {
+      const moreBtn = parent.querySelector('button[aria-label="More actions"], button[aria-label*="More"]');
+      if (moreBtn) {
+        console.log('[ActionExecutor] Found main profile action container (connect/follow parent fallback)');
+        return parent;
+      }
+      parent = parent.parentElement;
+      attempts++;
+    }
+  }
+
+  console.warn('[ActionExecutor] Could not find main profile action container');
+  return null;
+}
+
+/**
+ * Get current user's LinkedIn profile URL from the page
+ * IMPORTANT: Must only return the LOGGED-IN user's profile, not the profile being viewed
+ * @returns {Promise<string|null>}
+ */
+async function getCurrentUserProfileUrl() {
+  console.log('[ActionExecutor] Getting current user profile URL...');
+
+  // Method 1: Profile card in left sidebar (MOST RELIABLE - always shows logged-in user)
+  // This card appears on feed page and has class "profile-card"
+  const profileCardSelectors = [
+    '.profile-card a.profile-card-profile-picture-container[href*="/in/"]',
+    '.profile-card a.profile-card-profile-link[href*="/in/"]',
+    '.profile-card a[href*="/in/"]',
+    '.artdeco-card.profile-card a[href*="/in/"]'
+  ];
+
+  for (const selector of profileCardSelectors) {
+    const profileLink = document.querySelector(selector);
+    if (profileLink && profileLink.href && profileLink.href.includes('/in/')) {
+      console.log('[ActionExecutor] Found profile URL from profile card:', profileLink.href);
+      return profileLink.href;
+    }
+  }
+
+  // Method 2: Feed identity module (older LinkedIn UI)
+  const feedProfileSelectors = [
+    '.feed-identity-module__actor-meta a[href*="/in/"]',
+    '.feed-identity-module a[href*="/in/"]',
+    '.feed-identity-module__content a[href*="/in/"]'
+  ];
+
+  for (const selector of feedProfileSelectors) {
+    const feedProfile = document.querySelector(selector);
+    if (feedProfile && feedProfile.href) {
+      console.log('[ActionExecutor] Found profile URL from feed identity module:', feedProfile.href);
+      return feedProfile.href;
+    }
+  }
+
+  // Method 3: Check the global nav "Me" dropdown (fallback)
+  const meButtonSelectors = [
+    '.global-nav__me-trigger',
+    '.global-nav__me button',
+    '.global-nav__me'
+  ];
+
+  let meButton = null;
+  for (const selector of meButtonSelectors) {
+    meButton = document.querySelector(selector);
+    if (meButton) break;
+  }
+
+  if (meButton) {
+    console.log('[ActionExecutor] Clicking Me button to find profile...');
+    meButton.click();
+    await sleep(1500);
+
+    const dropdownSelectors = [
+      '.global-nav__me-content a[href*="/in/"]',
+      '.artdeco-dropdown__content-inner a[href*="/in/"]',
+      '.artdeco-dropdown__content a[href*="/in/"]'
+    ];
+
+    for (const selector of dropdownSelectors) {
+      const link = document.querySelector(selector);
+      if (link && link.href && link.href.includes('/in/')) {
+        const url = link.href;
+        console.log('[ActionExecutor] Found profile URL from Me dropdown:', url);
+        document.body.click();
+        await sleep(200);
+        return url;
+      }
+    }
+
+    document.body.click();
+    await sleep(200);
+  }
+
+  console.error('[ActionExecutor] Could not find current user profile URL');
+  console.log('[ActionExecutor] Current page:', window.location.href);
+  return null;
+}
+
+/**
+ * Check if we're on a profile page
+ * @returns {boolean}
+ */
+function isProfilePage() {
+  return window.location.href.includes('linkedin.com/in/');
+}
+
+/**
+ * Execute a VISIT action (just viewing the profile)
+ * @param {object} action - Action data from API
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+async function executeVisit(action) {
+  console.log('[ActionExecutor] Executing VISIT action for:', action.prospect.full_name);
+
+  try {
+    const profileUrl = action.prospect.profile_url;
+
+    // Navigate to profile if not already there
+    if (!window.location.href.includes(profileUrl.replace('https://www.linkedin.com', ''))) {
+      console.log('[ActionExecutor] Navigating to profile:', profileUrl);
+      window.location.href = profileUrl;
+      return { success: true, message: 'Navigating to profile', navigating: true };
+    }
+
+    // Already on profile, wait for page to fully load
+    await sleep(getRandomDelay(2000, 4000));
+
+    // Scroll down to simulate viewing
+    window.scrollBy({ top: getRandomDelay(300, 600), behavior: 'smooth' });
+    await sleep(getRandomDelay(1000, 2000));
+
+    return { success: true, message: `Visited profile: ${action.prospect.full_name}` };
+  } catch (error) {
+    console.error('[ActionExecutor] Visit failed:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+/**
+ * Execute an INVITE (connection request) action
+ * Based on reference extension: sendConnectionRequest()
+ * @param {object} action - Action data from API
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+async function executeInvite(action) {
+  console.log('[ActionExecutor] Executing INVITE action for:', action.prospect.full_name);
+
+  const selectors = window.LINKEDIN_SELECTORS;
+  if (!selectors) {
+    return { success: false, message: 'Selectors not loaded' };
+  }
+
+  try {
+    const profileUrl = action.prospect.profile_url;
+
+    // Navigate to profile if not already there
+    if (!window.location.href.includes(profileUrl.replace('https://www.linkedin.com', ''))) {
+      console.log('[ActionExecutor] Navigating to profile for invite:', profileUrl);
+      window.location.href = profileUrl;
+      return { success: true, message: 'Navigating to profile', navigating: true };
+    }
+
+    // Wait for page to load
+    await sleep(2000);
+
+    // Get main profile action container
+    const actionContainer = getMainProfileActionContainer();
+    if (!actionContainer) {
+      return { success: false, message: 'Could not find profile action buttons' };
+    }
+
+    await sleep(500);
+
+    // Check if already pending
+    const pendingButton = actionContainer.querySelector(selectors.PROFILE.PENDING_BUTTON);
+    if (pendingButton) {
+      console.log('[ActionExecutor] Connection request already pending');
+      return { success: true, message: 'Connection request already pending' };
+    }
+
+    // Try to find visible Connect button first (primary button)
+    let connectButton = actionContainer.querySelector(selectors.PROFILE.CONNECT_BUTTON);
+
+    // If Connect not visible, check More menu
+    if (!connectButton) {
+      console.log('[ActionExecutor] Connect button not visible, checking More menu...');
+      await sleep(1000);
+
+      // Find More button in container
+      let moreButton = actionContainer.querySelector(selectors.PROFILE.MORE_BUTTON);
+
+      // Fallback: look for button with text "More"
+      if (!moreButton) {
+        const buttons = actionContainer.querySelectorAll('button');
+        for (const btn of buttons) {
+          if (btn.textContent.trim() === 'More') {
+            moreButton = btn;
+            break;
+          }
+        }
+      }
+
+      if (!moreButton) {
+        console.error('[ActionExecutor] More button not found');
+        return { success: false, message: 'Could not find Connect or More button' };
+      }
+
+      console.log('[ActionExecutor] Clicking More button...');
+      moreButton.click();
+
+      // Wait for dropdown to appear
+      await sleep(2000);
+
+      // Find Connect in dropdown (dropdown appears in body, not in container)
+      connectButton = document.querySelector(selectors.PROFILE.DROPDOWN_CONNECT);
+
+      if (!connectButton) {
+        console.error('[ActionExecutor] Connect button not found in More menu');
+        return { success: false, message: 'Connect option not found in More menu' };
+      }
+
+      await sleep(500);
+    }
+
+    // Click Connect button
+    console.log('[ActionExecutor] Clicking Connect button...');
+    connectButton.click();
+
+    // Wait for modal to appear
+    console.log('[ActionExecutor] Waiting for connection modal...');
+    await sleep(3000);
+
+    // Check for Add note and Send without note buttons
+    const addNoteButton = document.querySelector(selectors.CONNECTION_MODAL.ADD_NOTE_BUTTON);
+    const sendWithoutNoteButton = document.querySelector(selectors.CONNECTION_MODAL.SEND_WITHOUT_NOTE);
+
+    // If neither button exists, LinkedIn limit may have been reached
+    if (!addNoteButton && !sendWithoutNoteButton) {
+      console.warn('[ActionExecutor] LinkedIn connection limit may have been reached');
+      const dismissButton = document.querySelector(selectors.CONNECTION_MODAL.DISMISS_BUTTON);
+      if (dismissButton) {
+        dismissButton.click();
+        await sleep(500);
+      }
+      return { success: false, message: 'LinkedIn connection limit reached or modal did not appear' };
+    }
+
+    // Get message if provided
+    const message = action.action_data?.message;
+
+    if (message && message.trim() !== '') {
+      // Add note flow
+      console.log('[ActionExecutor] Adding note to connection request...');
+
+      if (!addNoteButton) {
+        console.error('[ActionExecutor] Add note button not found');
+        return { success: false, message: 'Add note button not found' };
+      }
+
+      await sleep(500);
+      console.log('[ActionExecutor] Clicking Add a note button...');
+      addNoteButton.click();
+
+      // Wait for textarea to appear
+      console.log('[ActionExecutor] Waiting for note textarea...');
+      await sleep(2000);
+
+      // Find the note textarea
+      const noteTextarea = document.querySelector(selectors.CONNECTION_MODAL.NOTE_TEXTAREA);
+      if (!noteTextarea) {
+        console.error('[ActionExecutor] Note textarea not found');
+        return { success: false, message: 'Note textarea not found' };
+      }
+
+      console.log('[ActionExecutor] Found note textarea, typing message...');
+      await sleep(500);
+
+      // Focus and set value
+      noteTextarea.focus();
+      await sleep(300);
+      noteTextarea.value = message;
+
+      // Trigger input event so LinkedIn recognizes the change
+      noteTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+      await sleep(500);
+
+      console.log('[ActionExecutor] Message entered successfully');
+
+      // Click Send invitation button
+      console.log('[ActionExecutor] Looking for Send button...');
+      await sleep(500);
+
+      const sendButton = document.querySelector(selectors.CONNECTION_MODAL.SEND_BUTTON);
+      if (!sendButton) {
+        console.error('[ActionExecutor] Send button not found');
+        return { success: false, message: 'Send button not found' };
+      }
+
+      console.log('[ActionExecutor] Clicking Send button...');
+      sendButton.click();
+      await sleep(1000);
+
+      console.log('[ActionExecutor] Connection request sent with note');
+      return { success: true, message: `Connection request sent with note to ${action.prospect.full_name}` };
+
+    } else {
+      // Send without note
+      console.log('[ActionExecutor] Sending connection request without note...');
+
+      if (!sendWithoutNoteButton) {
+        console.error('[ActionExecutor] Send without a note button not found');
+        return { success: false, message: 'Send without a note button not found' };
+      }
+
+      await sleep(500);
+      console.log('[ActionExecutor] Clicking Send without a note button...');
+      sendWithoutNoteButton.click();
+      await sleep(1000);
+
+      console.log('[ActionExecutor] Connection request sent without note');
+      return { success: true, message: `Connection request sent to ${action.prospect.full_name}` };
+    }
+
+  } catch (error) {
+    console.error('[ActionExecutor] Invite failed:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+/**
+ * Execute a FOLLOW action
+ * Similar to connect but clicks Follow instead
+ * @param {object} action - Action data from API
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+async function executeFollow(action) {
+  console.log('[ActionExecutor] Executing FOLLOW action for:', action.prospect.full_name);
+
+  const selectors = window.LINKEDIN_SELECTORS;
+  if (!selectors) {
+    return { success: false, message: 'Selectors not loaded' };
+  }
+
+  try {
+    const profileUrl = action.prospect.profile_url;
+
+    // Navigate to profile if not already there
+    if (!window.location.href.includes(profileUrl.replace('https://www.linkedin.com', ''))) {
+      window.location.href = profileUrl;
+      return { success: true, message: 'Navigating to profile', navigating: true };
+    }
+
+    // Wait for page to load
+    await sleep(2000);
+
+    // Get main profile action container
+    const actionContainer = getMainProfileActionContainer();
+    if (!actionContainer) {
+      return { success: false, message: 'Could not find profile action buttons' };
+    }
+
+    await sleep(500);
+
+    // Try to find visible Follow button first
+    let followButton = actionContainer.querySelector(selectors.PROFILE.FOLLOW_BUTTON);
+
+    // Make sure it's actually a Follow button, not Following
+    if (followButton && followButton.getAttribute('aria-label')?.includes('Following')) {
+      console.log('[ActionExecutor] Already following this person');
+      return { success: true, message: 'Already following this person' };
+    }
+
+    // If Follow not visible, check More menu (Connect might be shown instead)
+    if (!followButton) {
+      console.log('[ActionExecutor] Follow button not visible, checking More menu...');
+      await sleep(1000);
+
+      // Find More button in container
+      let moreButton = actionContainer.querySelector(selectors.PROFILE.MORE_BUTTON);
+
+      // Fallback: look for button with text "More"
+      if (!moreButton) {
+        const buttons = actionContainer.querySelectorAll('button');
+        for (const btn of buttons) {
+          if (btn.textContent.trim() === 'More') {
+            moreButton = btn;
+            break;
+          }
+        }
+      }
+
+      if (!moreButton) {
+        console.error('[ActionExecutor] More button not found');
+        return { success: false, message: 'Could not find Follow or More button' };
+      }
+
+      console.log('[ActionExecutor] Clicking More button...');
+      moreButton.click();
+
+      // Wait for dropdown to appear
+      await sleep(2000);
+
+      // Find Follow in dropdown (dropdown appears in body, not in container)
+      followButton = document.querySelector(selectors.PROFILE.DROPDOWN_FOLLOW);
+
+      if (!followButton) {
+        console.error('[ActionExecutor] Follow button not found in More menu');
+        return { success: false, message: 'Follow option not found in More menu' };
+      }
+
+      await sleep(500);
+    }
+
+    // Click Follow button
+    console.log('[ActionExecutor] Clicking Follow button...');
+    followButton.click();
+    await sleep(1000);
+
+    console.log('[ActionExecutor] Now following this person');
+    return { success: true, message: `Now following ${action.prospect.full_name}` };
+
+  } catch (error) {
+    console.error('[ActionExecutor] Follow failed:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+/**
+ * Execute a MESSAGE action (for 1st degree connections)
+ * Based on reference extension: sendFollowUpMessage()
+ * @param {object} action - Action data from API
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+async function executeMessage(action) {
+  console.log('[ActionExecutor] Executing MESSAGE action for:', action.prospect.full_name);
+
+  const selectors = window.LINKEDIN_SELECTORS;
+  if (!selectors) {
+    return { success: false, message: 'Selectors not loaded' };
+  }
+
+  try {
+    const profileUrl = action.prospect.profile_url;
+
+    // Navigate to profile if not already there
+    if (!window.location.href.includes(profileUrl.replace('https://www.linkedin.com', ''))) {
+      window.location.href = profileUrl;
+      return { success: true, message: 'Navigating to profile', navigating: true };
+    }
+
+    // Wait for page to load
+    await sleep(1000);
+
+    // Get main profile action container
+    console.log('[ActionExecutor] Looking for Message button...');
+    const actionContainer = getMainProfileActionContainer();
+    if (!actionContainer) {
+      return { success: false, message: 'Could not find profile action buttons' };
+    }
+
+    await sleep(500);
+
+    // Find Message button in main profile area
+    const messageButton = actionContainer.querySelector(selectors.PROFILE.MESSAGE_BUTTON);
+    if (!messageButton) {
+      console.error('[ActionExecutor] Message button not found in main profile area');
+      return { success: false, message: 'Message button not found (user may not be a 1st degree connection)' };
+    }
+
+    console.log('[ActionExecutor] Found Message button');
+    await sleep(500);
+
+    // Click Message button
+    console.log('[ActionExecutor] Clicking Message button...');
+    messageButton.click();
+
+    // Wait for message compose area to appear
+    console.log('[ActionExecutor] Waiting for message compose area...');
+    await sleep(3000);
+
+    // Find message textbox (contenteditable div)
+    const messageTextbox = document.querySelector(selectors.MESSAGE.TEXTBOX);
+    if (!messageTextbox) {
+      console.error('[ActionExecutor] Message textbox not found');
+      return { success: false, message: 'Message compose area did not appear' };
+    }
+
+    console.log('[ActionExecutor] Message textbox found');
+    await sleep(500);
+
+    // Get message content
+    const messageContent = action.action_data?.message;
+    if (!messageContent || messageContent.trim() === '') {
+      console.error('[ActionExecutor] No message content provided');
+      return { success: false, message: 'No message content provided' };
+    }
+
+    console.log('[ActionExecutor] Typing message...');
+
+    // Focus the textbox
+    messageTextbox.focus();
+    await sleep(500);
+
+    // LinkedIn uses contenteditable div - use execCommand insertHTML
+    document.execCommand('insertHTML', false, messageContent);
+    await sleep(500);
+
+    console.log('[ActionExecutor] Message typed successfully');
+
+    // Send the message using Ctrl+Enter and Enter
+    console.log('[ActionExecutor] Sending message with Ctrl+Enter...');
+
+    // Try Ctrl+Enter first
+    const ctrlEnterEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 13,
+      which: 13,
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true
+    });
+    messageTextbox.dispatchEvent(ctrlEnterEvent);
+    await sleep(500);
+
+    // Also try plain Enter as backup
+    console.log('[ActionExecutor] Sending message with Enter...');
+    const enterEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      keyCode: 13,
+      which: 13,
+      bubbles: true,
+      cancelable: true
+    });
+    messageTextbox.dispatchEvent(enterEvent);
+    await sleep(1000);
+
+    console.log('[ActionExecutor] Message sent');
+
+    // Close the message box
+    console.log('[ActionExecutor] Closing message box...');
+
+    // Look for button with close-small SVG icon
+    const closeButtonSvg = document.querySelector(selectors.MESSAGE.CLOSE_BUTTON_SVG);
+    if (closeButtonSvg) {
+      // Click the button (parent of the SVG)
+      closeButtonSvg.closest('button').click();
+      console.log('[ActionExecutor] Message box closed');
+    } else {
+      // Fallback: find button with specific class
+      const closeButtons = document.querySelectorAll(selectors.MESSAGE.CLOSE_BUTTON);
+      for (const btn of closeButtons) {
+        if (btn.textContent.includes('Close') || btn.querySelector('svg')) {
+          btn.click();
+          console.log('[ActionExecutor] Message box closed (fallback)');
+          break;
+        }
+      }
+    }
+
+    await sleep(500);
+
+    return { success: true, message: `Message sent to ${action.prospect.full_name}` };
+
+  } catch (error) {
+    console.error('[ActionExecutor] Message failed:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+/**
+ * Main action executor - routes to appropriate handler
+ * @param {object} action - Action data from API
+ * @returns {Promise<{success: boolean, message: string, navigating?: boolean}>}
+ */
+async function executeAction(action) {
+  console.log('[ActionExecutor] Executing action:', action.action_type);
+
+  switch (action.action_type) {
+    case 'visit':
+      return await executeVisit(action);
+
+    case 'invite':
+      return await executeInvite(action);
+
+    case 'message':
+      return await executeMessage(action);
+
+    case 'follow':
+      return await executeFollow(action);
+
+    default:
+      return {
+        success: false,
+        message: `Unknown action type: ${action.action_type}`
+      };
+  }
+}
+
+// Export functions for use in content script
+if (typeof window !== 'undefined') {
+  window.ActionExecutor = {
+    executeAction,
+    executeVisit,
+    executeInvite,
+    executeMessage,
+    executeFollow,
+    getCurrentUserProfileUrl,
+    isProfilePage,
+    getMainProfileActionContainer,
+    sleep,
+    getRandomDelay
+  };
+}

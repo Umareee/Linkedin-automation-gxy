@@ -14,10 +14,12 @@ import { useDetachTag } from '../../hooks/useProspects';
  * Prospect table component
  * @param {object} props - Component props
  * @param {array} props.prospects - Array of prospect objects
+ * @param {array} props.selectedProspects - Array of selected prospect IDs
+ * @param {function} props.onToggleProspect - Toggle prospect selection callback
  * @param {function} props.onEdit - Edit callback
  * @param {function} props.onDelete - Delete callback
  */
-const ProspectTable = ({ prospects = [], onEdit, onDelete }) => {
+const ProspectTable = ({ prospects = [], selectedProspects = [], onToggleProspect, onEdit, onDelete }) => {
   const detachTagMutation = useDetachTag();
 
   /**
@@ -59,6 +61,9 @@ const ProspectTable = ({ prospects = [], onEdit, onDelete }) => {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
+              <th className="px-3 py-3 text-left">
+                {/* Checkbox column */}
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Prospect
               </th>
@@ -79,6 +84,16 @@ const ProspectTable = ({ prospects = [], onEdit, onDelete }) => {
           <tbody className="bg-white divide-y divide-gray-200">
             {prospects.map((prospect) => (
               <tr key={prospect.id} className="hover:bg-gray-50 transition-colors">
+                {/* Checkbox */}
+                <td className="px-3 py-4 whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={selectedProspects.includes(prospect.id)}
+                    onChange={() => onToggleProspect(prospect.id)}
+                    className="w-4 h-4 text-linkedin border-gray-300 rounded focus:ring-linkedin"
+                  />
+                </td>
+
                 {/* Prospect Info */}
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center">

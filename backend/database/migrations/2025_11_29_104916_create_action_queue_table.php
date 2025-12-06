@@ -20,8 +20,8 @@ return new class extends Migration
 
             // Foreign keys
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->foreignId('campaign_id')->constrained()->onDelete('cascade');
             $table->foreignId('prospect_id')->constrained()->onDelete('cascade');
+            // campaign_id will be added later in update_action_queue_for_campaigns migration
 
             // Action details
             $table->enum('action_type', [
@@ -53,7 +53,7 @@ return new class extends Migration
             // Indexes for efficient queries
             $table->index(['status', 'scheduled_for']); // Find next pending actions
             $table->index('user_id');
-            $table->index('campaign_id');
+            // campaign_id index will be added later in update_action_queue_for_campaigns migration
         });
     }
 

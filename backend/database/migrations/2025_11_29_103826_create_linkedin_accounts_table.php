@@ -21,19 +21,24 @@ return new class extends Migration
             // Foreign key to users table (1-to-1 relationship)
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
 
-            // LinkedIn profile information
-            $table->string('linkedin_id')->unique()->nullable(); // LinkedIn's internal ID
+            // LinkedIn profile information (from OAuth response)
+            $table->string('linkedin_id'); // Same as users.linkedin_id
             $table->string('full_name'); // Display name from LinkedIn
             $table->string('profile_url')->nullable(); // Public profile URL
-            $table->string('email')->nullable(); // Email from LinkedIn
+            $table->string('email'); // Email from LinkedIn
             $table->string('profile_image_url')->nullable(); // Profile picture URL
+            $table->string('headline')->nullable(); // Job title/headline
+            $table->string('location')->nullable(); // Geographic location
 
-            // Authentication data (encrypted)
+            // Browser cookies (for extension automation)
+            // Separate from OAuth tokens - these are for scraping/automation
             $table->text('cookies')->nullable(); // Encrypted LinkedIn session cookies
 
             // Account status
             $table->boolean('is_active')->default(true); // Whether account is connected
+            $table->boolean('cookies_valid')->default(false); // Track cookie validity
             $table->timestamp('last_synced_at')->nullable(); // Last time we verified cookies work
+            $table->timestamp('cookies_updated_at')->nullable(); // When cookies were last updated
 
             $table->timestamps();
 

@@ -82,4 +82,28 @@ export const useUIStore = create((set) => ({
    * Close sidebar
    */
   closeSidebar: () => set({ isSidebarOpen: false }),
+
+  // Selected prospects (persists across pagination)
+  selectedProspects: [],
+
+  /**
+   * Toggle prospect selection
+   * @param {number} prospectId - Prospect ID to toggle
+   */
+  toggleProspect: (prospectId) => set((state) => ({
+    selectedProspects: state.selectedProspects.includes(prospectId)
+      ? state.selectedProspects.filter((id) => id !== prospectId)
+      : [...state.selectedProspects, prospectId]
+  })),
+
+  /**
+   * Set selected prospects (for select all)
+   * @param {array} prospectIds - Array of prospect IDs
+   */
+  setSelectedProspects: (prospectIds) => set({ selectedProspects: prospectIds }),
+
+  /**
+   * Clear selected prospects
+   */
+  clearSelectedProspects: () => set({ selectedProspects: [] }),
 }));

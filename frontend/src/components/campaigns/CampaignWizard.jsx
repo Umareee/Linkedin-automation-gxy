@@ -1,0 +1,683 @@
+/**
+ * Campaign Creation Wizard
+ *
+ * Multi-step wizard for creating LinkedIn campaigns.
+ * Steps: Name -> Action Type -> Action Config (template/note) -> Tag Selection -> Save/Start
+ */
+
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Button from '../common/Button';
+import Spinner from '../common/Spinner';
+import { useCampaignActions } from '../../hooks/useCampaigns';
+import { useTemplates } from '../../hooks/useTemplates';
+import { useTags } from '../../hooks/useTags';
+import { useCreateCampaign, useAddProspects, useStartCampaign } from '../../hooks/useCampaigns';
+import { prospectService } from '../../services/prospect.service';
+
+const CampaignWizard = () => {
+  const navigate = useNavigate();
+  const [currentStep, setCurrentStep] = useState(1);
+  const [campaignData, setCampaignData] = useState({
+    name: '',
+    description: '',
+    daily_limit: 50,
+    selectedAction: null,
+    inviteWithNote: false,
+    selectedTemplateId: null,
+    selectedTags: [],
+  });
+
+  // Fetch available action types
+  const { data: actionsData, isLoading: loadingActions } = useCampaignActions();
+  const actions = actionsData?.actions || [];
+
+  // Fetch invitation templates
+  const { data: invitationTemplatesData } = useTemplates('invitation');
+  const invitationTemplates = invitationTemplatesData?.templates || [];
+
+  // Fetch message templates
+  const { data: messageTemplatesData } = useTemplates('message');
+  const messageTemplates = messageTemplatesData?.templates || [];
+
+  // Fetch tags (to show only tags with prospects)
+  const { data: tagsData } = useTags();
+  const allTags = Array.isArray(tagsData) ? tagsData : [];
+  // Filter tags that have prospects
+  const tagsWithProspects = allTags.filter(tag => tag.prospects_count > 0);
+
+  // Mutations
+  const { mutate: createCampaign, isLoading: isCreating } = useCreateCampaign();
+  const { mutate: addProspects } = useAddProspects();
+  const { mutate: startCampaign } = useStartCampaign();
+
+  const steps = [
+    { number: 1, name: 'Campaign Name' },
+    { number: 2, name: 'Select Action' },
+    { number: 3, name: 'Configure Action' },
+    { number: 4, name: 'Select Tags' },
+  ];
+
+  const handleNext = () => {
+    // Skip step 3 if action doesn't need configuration
+    if (currentStep === 2 && campaignData.selectedAction) {
+      const action = actions.find(a => a.id === campaignData.selectedAction);
+      // Visit and Follow don't need configuration
+      if (action?.key === 'visit' || action?.key === 'follow') {
+        setCurrentStep(4);
+        return;
+      }
+    }
+    setCurrentStep(prev => prev + 1);
+  };
+
+  const handleBack = () => {
+    // Skip step 3 when going back if action doesn't need configuration
+    if (currentStep === 4 && campaignData.selectedAction) {
+      const action = actions.find(a => a.id === campaignData.selectedAction);
+      if (action?.key === 'visit' || action?.key === 'follow') {
+        setCurrentStep(2);
+        return;
+      }
+    }
+    setCurrentStep(prev => prev - 1);
+  };
+
+  const handleSave = (shouldStart = false) => {
+    const selectedAction = actions.find(a => a.id === campaignData.selectedAction);
+
+    // Prepare campaign data
+    const payload = {
+      name: campaignData.name,
+      description: campaignData.description || null,
+      daily_limit: campaignData.daily_limit,
+      steps: [
+        {
+          campaign_action_id: campaignData.selectedAction,
+          order: 1,
+          delay_days: 0,
+          message_template_id: campaignData.selectedTemplateId || null,
+          config: selectedAction?.key === 'invite' && !campaignData.inviteWithNote
+            ? { send_without_note: true }
+            : null,
+        },
+      ],
+    };
+
+    // Create campaign
+    createCampaign(payload, {
+      onSuccess: async (response) => {
+        const campaignId = response.campaign.id;
+
+        // Fetch prospects for the selected tags from the API
+        try {
+          // Get ALL prospects for the selected tags (not just first page)
+          const prospectsResponse = await prospectService.getProspects({
+            tag_ids: campaignData.selectedTags.join(','),
+            per_page: 1000 // Fetch up to 1000 prospects for the campaign
+          });
+
+          const prospectIds = (prospectsResponse.data || []).map(p => p.id);
+
+          // Add prospects to campaign
+          if (prospectIds.length > 0) {
+            addProspects(
+              { id: campaignId, prospectIds },
+              {
+                onSuccess: () => {
+                  if (shouldStart) {
+                    // Start campaign immediately
+                    startCampaign(campaignId, {
+                      onSuccess: () => {
+                        navigate('/campaign/list');
+                      },
+                    });
+                  } else {
+                    navigate('/campaign/list');
+                  }
+                },
+              }
+            );
+          } else {
+            navigate('/campaign/list');
+          }
+        } catch (error) {
+          console.error('Failed to fetch prospects for tags:', error);
+          navigate('/campaign/list');
+        }
+      },
+    });
+  };
+
+  const isStepValid = () => {
+    switch (currentStep) {
+      case 1:
+        return campaignData.name.trim() !== '';
+      case 2:
+        return campaignData.selectedAction !== null;
+      case 3:
+        const action = actions.find(a => a.id === campaignData.selectedAction);
+        if (action?.key === 'invite') {
+          return campaignData.inviteWithNote ? campaignData.selectedTemplateId !== null : true;
+        }
+        if (action?.key === 'message') {
+          return campaignData.selectedTemplateId !== null;
+        }
+        return true;
+      case 4:
+        return campaignData.selectedTags.length > 0;
+      default:
+        return false;
+    }
+  };
+
+  const renderStep = () => {
+    switch (currentStep) {
+      case 1:
+        return <StepName campaignData={campaignData} setCampaignData={setCampaignData} />;
+      case 2:
+        return (
+          <StepActionSelection
+            actions={actions}
+            loading={loadingActions}
+            campaignData={campaignData}
+            setCampaignData={setCampaignData}
+          />
+        );
+      case 3:
+        return (
+          <StepActionConfig
+            actions={actions}
+            invitationTemplates={invitationTemplates}
+            messageTemplates={messageTemplates}
+            campaignData={campaignData}
+            setCampaignData={setCampaignData}
+          />
+        );
+      case 4:
+        return (
+          <StepTagSelection
+            tags={tagsWithProspects}
+            campaignData={campaignData}
+            setCampaignData={setCampaignData}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      {/* Progress Steps */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between">
+          {steps.map((step, index) => (
+            <div key={step.number} className="flex items-center">
+              <div className="flex flex-col items-center">
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
+                    currentStep >= step.number
+                      ? 'bg-linkedin text-white'
+                      : 'bg-gray-200 text-gray-600'
+                  }`}
+                >
+                  {step.number}
+                </div>
+                <div className="mt-2 text-sm font-medium text-gray-700">{step.name}</div>
+              </div>
+              {index < steps.length - 1 && (
+                <div
+                  className={`flex-1 h-1 mx-4 ${
+                    currentStep > step.number ? 'bg-linkedin' : 'bg-gray-200'
+                  }`}
+                  style={{ width: '100px' }}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Step Content */}
+      <div className="bg-white rounded-lg shadow p-8 mb-6">{renderStep()}</div>
+
+      {/* Navigation Buttons */}
+      <div className="flex justify-between">
+        <div>
+          {currentStep > 1 && (
+            <Button variant="secondary" onClick={handleBack}>
+              Back
+            </Button>
+          )}
+        </div>
+        <div className="flex space-x-3">
+          <Button variant="secondary" onClick={() => navigate('/campaign/list')}>
+            Cancel
+          </Button>
+          {currentStep < 4 ? (
+            <Button variant="primary" onClick={handleNext} disabled={!isStepValid()}>
+              Next
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => handleSave(false)}
+                disabled={!isStepValid() || isCreating}
+              >
+                {isCreating ? <Spinner size="sm" /> : 'Save as Draft'}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => handleSave(true)}
+                disabled={!isStepValid() || isCreating}
+              >
+                {isCreating ? <Spinner size="sm" /> : 'Save & Start'}
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Step 1: Campaign Name
+const StepName = ({ campaignData, setCampaignData }) => {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Campaign Details</h2>
+        <p className="text-sm text-gray-600">Give your campaign a name and description</p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Campaign Name <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          value={campaignData.name}
+          onChange={(e) => setCampaignData({ ...campaignData, name: e.target.value })}
+          placeholder="e.g., Outreach to Marketing Managers"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-linkedin focus:border-transparent"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Description (Optional)</label>
+        <textarea
+          value={campaignData.description}
+          onChange={(e) => setCampaignData({ ...campaignData, description: e.target.value })}
+          placeholder="Brief description of your campaign goals..."
+          rows={3}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-linkedin focus:border-transparent"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Daily Limit</label>
+        <input
+          type="number"
+          value={campaignData.daily_limit}
+          onChange={(e) =>
+            setCampaignData({ ...campaignData, daily_limit: parseInt(e.target.value) || 50 })
+          }
+          min="1"
+          max="100"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-linkedin focus:border-transparent"
+        />
+        <p className="text-xs text-gray-500 mt-1">Maximum number of actions per day (1-100)</p>
+      </div>
+    </div>
+  );
+};
+
+// Step 2: Action Selection
+const StepActionSelection = ({ actions, loading, campaignData, setCampaignData }) => {
+  if (loading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Select Action Type</h2>
+        <p className="text-sm text-gray-600">Choose what action to perform on LinkedIn</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {actions.map((action) => (
+          <div
+            key={action.id}
+            onClick={() => setCampaignData({ ...campaignData, selectedAction: action.id })}
+            className={`p-6 border-2 rounded-lg cursor-pointer transition-all ${
+              campaignData.selectedAction === action.id
+                ? 'border-linkedin bg-blue-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-start space-x-4">
+              <div
+                className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                  campaignData.selectedAction === action.id ? 'bg-linkedin' : 'bg-gray-100'
+                }`}
+              >
+                <svg
+                  className={`w-6 h-6 ${
+                    campaignData.selectedAction === action.id ? 'text-white' : 'text-gray-600'
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  {action.key === 'visit' && (
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                    />
+                  )}
+                  {action.key === 'invite' && (
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+                    />
+                  )}
+                  {action.key === 'message' && (
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                    />
+                  )}
+                  {action.key === 'follow' && (
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  )}
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">{action.name}</h3>
+                <p className="text-sm text-gray-600">{action.description}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Step 3: Action Configuration
+const StepActionConfig = ({
+  actions,
+  invitationTemplates,
+  messageTemplates,
+  campaignData,
+  setCampaignData,
+}) => {
+  const selectedAction = actions.find((a) => a.id === campaignData.selectedAction);
+
+  if (!selectedAction) return null;
+
+  // Invite action: with note or without
+  if (selectedAction.key === 'invite') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Configure Connection Request</h2>
+          <p className="text-sm text-gray-600">Choose whether to include a note with your invitation</p>
+        </div>
+
+        <div className="space-y-4">
+          {/* Send without note */}
+          <div
+            onClick={() =>
+              setCampaignData({
+                ...campaignData,
+                inviteWithNote: false,
+                selectedTemplateId: null,
+              })
+            }
+            className={`p-4 border-2 rounded-lg cursor-pointer ${
+              !campaignData.inviteWithNote ? 'border-linkedin bg-blue-50' : 'border-gray-200'
+            }`}
+          >
+            <div className="flex items-center">
+              <input
+                type="radio"
+                checked={!campaignData.inviteWithNote}
+                onChange={() => {}}
+                className="w-4 h-4 text-linkedin focus:ring-linkedin"
+              />
+              <div className="ml-3">
+                <div className="text-sm font-medium text-gray-900">Send without note</div>
+                <div className="text-xs text-gray-500">Send connection request without a message</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Send with note */}
+          <div
+            onClick={() => setCampaignData({ ...campaignData, inviteWithNote: true })}
+            className={`p-4 border-2 rounded-lg cursor-pointer ${
+              campaignData.inviteWithNote ? 'border-linkedin bg-blue-50' : 'border-gray-200'
+            }`}
+          >
+            <div className="flex items-center">
+              <input
+                type="radio"
+                checked={campaignData.inviteWithNote}
+                onChange={() => {}}
+                className="w-4 h-4 text-linkedin focus:ring-linkedin"
+              />
+              <div className="ml-3">
+                <div className="text-sm font-medium text-gray-900">Send with personalized note</div>
+                <div className="text-xs text-gray-500">Include a message (max 300 characters)</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Template selection */}
+          {campaignData.inviteWithNote && (
+            <div className="ml-7 mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Invitation Template
+              </label>
+              {invitationTemplates.length === 0 ? (
+                <div className="text-sm text-gray-500 p-4 bg-gray-50 rounded-lg">
+                  No invitation templates found. Please create one first in Message Templates.
+                </div>
+              ) : (
+                <select
+                  value={campaignData.selectedTemplateId || ''}
+                  onChange={(e) =>
+                    setCampaignData({
+                      ...campaignData,
+                      selectedTemplateId: parseInt(e.target.value),
+                    })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-linkedin focus:border-transparent"
+                >
+                  <option value="">Select a template...</option>
+                  {invitationTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {campaignData.selectedTemplateId && (
+                <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="text-xs text-gray-500 mb-1">Preview:</div>
+                  <div className="text-sm text-gray-700">
+                    {
+                      invitationTemplates.find((t) => t.id === campaignData.selectedTemplateId)
+                        ?.content
+                    }
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Message action: select template
+  if (selectedAction.key === 'message') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Configure Message</h2>
+          <p className="text-sm text-gray-600">Select a message template to send</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Select Message Template
+          </label>
+          {messageTemplates.length === 0 ? (
+            <div className="text-sm text-gray-500 p-4 bg-gray-50 rounded-lg">
+              No message templates found. Please create one first in Message Templates.
+            </div>
+          ) : (
+            <>
+              <select
+                value={campaignData.selectedTemplateId || ''}
+                onChange={(e) =>
+                  setCampaignData({
+                    ...campaignData,
+                    selectedTemplateId: parseInt(e.target.value),
+                  })
+                }
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-linkedin focus:border-transparent"
+              >
+                <option value="">Select a template...</option>
+                {messageTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+
+              {campaignData.selectedTemplateId && (
+                <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="text-xs text-gray-500 mb-1">Preview:</div>
+                  <div className="text-sm text-gray-700 whitespace-pre-wrap">
+                    {messageTemplates.find((t) => t.id === campaignData.selectedTemplateId)?.content}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+// Step 4: Tag Selection
+const StepTagSelection = ({ tags, campaignData, setCampaignData }) => {
+  const toggleTag = (tagId) => {
+    const isSelected = campaignData.selectedTags.includes(tagId);
+    if (isSelected) {
+      setCampaignData({
+        ...campaignData,
+        selectedTags: campaignData.selectedTags.filter((id) => id !== tagId),
+      });
+    } else {
+      setCampaignData({
+        ...campaignData,
+        selectedTags: [...campaignData.selectedTags, tagId],
+      });
+    }
+  };
+
+  const totalProspects = tags
+    .filter((tag) => campaignData.selectedTags.includes(tag.id))
+    .reduce((sum, tag) => sum + (tag.prospects_count || 0), 0);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Select Tags</h2>
+        <p className="text-sm text-gray-600">
+          Choose which tagged prospects to include in this campaign
+        </p>
+      </div>
+
+      {tags.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          <p className="mb-2">No tags with prospects found.</p>
+          <p className="text-sm">Create some tags and add prospects to them first.</p>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-2">
+            {tags.map((tag) => (
+              <div
+                key={tag.id}
+                onClick={() => toggleTag(tag.id)}
+                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                  campaignData.selectedTags.includes(tag.id)
+                    ? 'border-linkedin bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={campaignData.selectedTags.includes(tag.id)}
+                      onChange={() => {}}
+                      className="w-4 h-4 text-linkedin rounded focus:ring-linkedin"
+                    />
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: tag.color }}
+                        />
+                        <span className="font-medium text-gray-900">{tag.name}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-sm text-gray-600">{tag.prospects_count} prospects</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {campaignData.selectedTags.length > 0 && (
+            <div className="p-4 bg-linkedin-light rounded-lg">
+              <div className="text-sm font-medium text-gray-900">
+                Total prospects: <span className="text-linkedin font-bold">{totalProspects}</span>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+export default CampaignWizard;

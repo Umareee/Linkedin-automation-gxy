@@ -1,8 +1,9 @@
 /**
- * Authentication Service
+ * Authentication Service (OAuth Version)
  *
  * Manages authentication state and user session.
- * Handles login, logout, and token validation.
+ * Authentication is handled via LinkedIn OAuth (background.js receives token from webapp).
+ * This service handles logout and token validation only.
  */
 
 /**
@@ -26,30 +27,6 @@ async function isAuthenticated() {
     // Token is invalid or expired
     await clearAuth();
     return false;
-  }
-}
-
-/**
- * Handle user login
- * Authenticates with backend and stores token locally
- * @param {string} email - User email
- * @param {string} password - User password
- * @returns {Promise<object>} User object from backend
- * @throws {Error} If login fails
- */
-async function handleLogin(email, password) {
-  try {
-    // Call backend login endpoint
-    const response = await login(email, password);
-
-    // Store token and email
-    await setAuthToken(response.token);
-    await setUserEmail(email);
-
-    return response.user;
-  } catch (error) {
-    // Re-throw with user-friendly message
-    throw new Error(error.message || 'Login failed');
   }
 }
 

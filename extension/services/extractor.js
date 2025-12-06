@@ -294,8 +294,188 @@ async function clickNextButton() {
 }
 
 /**
+ * Extract profiles from My Connections page
+ * URL: https://www.linkedin.com/mynetwork/invite-connect/connections/
+ * @param {number} limit - Maximum number of profiles to extract
+ * @param {number} totalCollected - Total already collected
+ * @param {number} totalLimit - Total limit for extraction
+ * @returns {Promise<Array<object>>} Array of prospect objects
+ */
+async function extractFromConnectionsPage(limit = 100, totalCollected = 0, totalLimit = 100) {
+  const extracted = [];
+  let currentCount = 0;
+  const selectors = window.LINKEDIN_SELECTORS?.CONNECTIONS;
+
+  console.log(`[Extractor] Extracting from Connections page with limit: ${limit}`);
+
+  if (!selectors) {
+    console.error('[Extractor] Connections selectors not loaded');
+    return extracted;
+  }
+
+  // Find all connection cards
+  let connectionCards = document.querySelectorAll(selectors.CONNECTION_CARD);
+
+  // Try alternative selector if primary doesn't work
+  if (connectionCards.length === 0) {
+    connectionCards = document.querySelectorAll(selectors.ALT_CARD);
+  }
+
+  // If still no cards, try finding by profile links
+  if (connectionCards.length === 0) {
+    console.log('[Extractor] Trying to find connections by profile links...');
+    const profileLinks = document.querySelectorAll('a[href*="/in/"]');
+    const uniqueLinks = new Map();
+
+    for (const link of profileLinks) {
+      // Skip nav and sidebar links
+      if (link.closest('.global-nav') || link.closest('.scaffold-layout__aside')) {
+        continue;
+      }
+
+      const href = link.href;
+      if (href && href.includes('/in/') && !uniqueLinks.has(href)) {
+        uniqueLinks.set(href, link);
+      }
+    }
+
+    console.log(`[Extractor] Found ${uniqueLinks.size} unique profile links`);
+
+    // Extract from links directly
+    for (const [href, link] of uniqueLinks) {
+      if (shouldStopExtraction) break;
+      if (currentCount >= limit) break;
+
+      try {
+        // Find the card container
+        const card = link.closest('li') || link.closest('div[data-view-name]') || link.parentElement;
+
+        // Get name from link text or nearby element
+        let name = link.textContent?.trim();
+        if (!name || name.length < 2) {
+          const nameEl = card?.querySelector('.mn-connection-card__name, .entity-result__title-text, span[aria-hidden="true"]');
+          name = nameEl?.textContent?.trim();
+        }
+
+        if (!name || name.length < 2) continue;
+
+        // Get headline/occupation
+        const occupationEl = card?.querySelector('.mn-connection-card__occupation, .entity-result__primary-subtitle');
+        const headline = occupationEl?.textContent?.trim() || null;
+
+        // Get profile image
+        const imgEl = card?.querySelector(`img[alt*="${name}"], img.presence-entity__image, img.EntityPhoto-circle-4`);
+        const profileImage = imgEl?.src || null;
+
+        const prospect = {
+          full_name: name,
+          profile_url: href,
+          linkedin_id: extractLinkedInId(href),
+          headline: headline,
+          profile_image_url: profileImage
+        };
+
+        extracted.push(prospect);
+        currentCount++;
+
+        // Send progress update
+        const totalCurrent = totalCollected + currentCount;
+        try {
+          chrome.runtime.sendMessage({
+            type: 'EXTRACTION_PROGRESS',
+            current: totalCurrent,
+            limit: totalLimit
+          });
+        } catch (e) { /* ignore */ }
+
+        console.log(`[Extractor] Extracted ${totalCurrent}/${totalLimit}: ${prospect.full_name}`);
+
+      } catch (error) {
+        console.warn('[Extractor] Error extracting connection:', error);
+      }
+    }
+
+    return extracted;
+  }
+
+  console.log(`[Extractor] Found ${connectionCards.length} connection cards`);
+
+  // Extract from connection cards
+  for (const card of connectionCards) {
+    if (shouldStopExtraction) break;
+    if (currentCount >= limit) break;
+
+    try {
+      // Get profile link
+      const linkEl = card.querySelector(selectors.PROFILE_LINK) ||
+                     card.querySelector(selectors.ALT_PROFILE_LINK) ||
+                     card.querySelector('a[href*="/in/"]');
+
+      if (!linkEl || !linkEl.href) continue;
+
+      const profileUrl = linkEl.href;
+
+      // Get name
+      const nameEl = card.querySelector(selectors.NAME) ||
+                     card.querySelector('span.mn-connection-card__name') ||
+                     linkEl;
+      const fullName = nameEl?.textContent?.trim();
+
+      if (!fullName || fullName.length < 2) continue;
+
+      // Get occupation/headline
+      const occupationEl = card.querySelector(selectors.OCCUPATION);
+      const headline = occupationEl?.textContent?.trim() || null;
+
+      // Get profile image
+      const imgEl = card.querySelector(selectors.PROFILE_IMAGE) ||
+                    card.querySelector(`img[alt="${fullName}"]`);
+      const profileImage = imgEl?.src || null;
+
+      const prospect = {
+        full_name: fullName,
+        profile_url: profileUrl,
+        linkedin_id: extractLinkedInId(profileUrl),
+        headline: headline,
+        profile_image_url: profileImage
+      };
+
+      extracted.push(prospect);
+      currentCount++;
+
+      // Send progress update
+      const totalCurrent = totalCollected + currentCount;
+      try {
+        chrome.runtime.sendMessage({
+          type: 'EXTRACTION_PROGRESS',
+          current: totalCurrent,
+          limit: totalLimit
+        });
+      } catch (e) { /* ignore */ }
+
+      console.log(`[Extractor] Extracted ${totalCurrent}/${totalLimit}: ${prospect.full_name}`);
+
+    } catch (error) {
+      console.warn('[Extractor] Error extracting connection card:', error);
+    }
+  }
+
+  console.log(`[Extractor] Extracted ${extracted.length} connections`);
+  return extracted;
+}
+
+/**
+ * Check if current page is the connections page
+ * @returns {boolean}
+ */
+function isConnectionsPage() {
+  return window.location.href.includes('linkedin.com/mynetwork/invite-connect/connections');
+}
+
+/**
  * Main extraction function with automatic pagination
  * Scrolls page and extracts profiles across multiple pages until limit reached
+ * Supports both Search Results and My Connections pages
  * @param {number} limit - Maximum number of profiles to extract
  * @returns {Promise<Array<object>>} Array of prospect objects
  */
@@ -306,6 +486,18 @@ async function performExtraction(limit = 100) {
 
     const allProspects = [];
     let pageCount = 0;
+
+    // Check if we're on the connections page
+    if (isConnectionsPage()) {
+      console.log(`[Extractor] Detected Connections page - using connections extractor`);
+
+      // Connections page uses infinite scroll, so scroll to load all first
+      await scrollToLoadAll();
+
+      // Extract from connections page
+      const prospects = await extractFromConnectionsPage(limit, 0, limit);
+      return prospects;
+    }
 
     console.log(`[Extractor] Starting multi-page extraction with limit: ${limit}`);
 

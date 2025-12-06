@@ -7,13 +7,22 @@
   "permissions": [
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "tabs",
+    "notifications"
   ],
 
   "host_permissions": [
     "https://www.linkedin.com/*",
-    "http://localhost:8000/*"
+    "http://localhost:8000/*",
+    "http://localhost:3000/*"
   ],
+
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:3000/*"
+    ]
+  },
 
   "background": {
     "service_worker": "background.js"
@@ -33,8 +42,21 @@
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/*"],
-      "js": ["utils/selectors.js", "services/extractor.js", "content-script.js"],
+      "js": [
+        "services/storage.js",
+        "services/api.js",
+        "utils/selectors.js",
+        "services/extractor.js",
+        "services/actionExecutor.js",
+        "services/queueProcessor.js",
+        "content-script.js"
+      ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost:3000/*"],
+      "js": ["webapp-connector.js"],
+      "run_at": "document_start"
     }
   ],
 

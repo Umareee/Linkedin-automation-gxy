@@ -4,15 +4,20 @@
  * Sets up React Query, routing, and protected routes.
  */
 
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './store/authStore';
 
 // Pages
 import Login from './pages/Login';
-import Register from './pages/Register';
-import Prospects from './pages/Prospects';
-import Tags from './pages/Tags';
+import LinkedInCallback from './pages/LinkedInCallback';
+import ProspectsNew from './pages/ProspectsNew';
+import CampaignsList from './pages/CampaignsList';
+import CampaignCreate from './pages/CampaignCreate';
+import CampaignDetails from './pages/CampaignDetails';
+import MessageTemplates from './pages/MessageTemplates';
+import ComingSoon from './pages/ComingSoon';
 import NotFound from './pages/NotFound';
 
 // Create React Query client
@@ -58,6 +63,42 @@ const PublicRoute = ({ children }) => {
  * Main App Component
  */
 function App() {
+  const { token, setUser, clearAuth } = useAuthStore();
+
+  // Verify token and refresh user data on app mount
+  useEffect(() => {
+    const verifyAuth = async () => {
+      if (token) {
+        try {
+          console.log('[App] Verifying auth and fetching fresh user data...');
+          // Fetch fresh user data with the stored token
+          const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/user`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/json',
+            },
+          });
+
+          if (response.ok) {
+            const userData = await response.json();
+            console.log('[App] Fresh user data fetched:', userData.data);
+            // Update user data in store
+            setUser(userData.data);
+          } else {
+            console.error('[App] Token is invalid, clearing auth');
+            // Token is invalid, clear auth
+            clearAuth();
+          }
+        } catch (error) {
+          console.error('[App] Failed to verify auth:', error);
+          // On network error, keep existing auth state
+        }
+      }
+    };
+
+    verifyAuth();
+  }, [token]); // Run whenever token changes
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
@@ -72,28 +113,80 @@ function App() {
             }
           />
           <Route
-            path="/register"
-            element={
-              <PublicRoute>
-                <Register />
-              </PublicRoute>
-            }
+            path="/auth/callback"
+            element={<LinkedInCallback />}
           />
 
           {/* Protected Routes */}
           <Route
-            path="/prospects"
+            path="/dashboard"
             element={
               <ProtectedRoute>
-                <Prospects />
+                <ComingSoon title="Home Dashboard" description="Your personalized dashboard is coming soon!" />
               </ProtectedRoute>
             }
           />
           <Route
-            path="/tags"
+            path="/prospects"
             element={
               <ProtectedRoute>
-                <Tags />
+                <ProspectsNew />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/campaign/list"
+            element={
+              <ProtectedRoute>
+                <CampaignsList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/campaign/create"
+            element={
+              <ProtectedRoute>
+                <CampaignCreate />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/campaign/:id"
+            element={
+              <ProtectedRoute>
+                <CampaignDetails />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/campaign/templates"
+            element={
+              <ProtectedRoute>
+                <MessageTemplates />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inbox"
+            element={
+              <ProtectedRoute>
+                <ComingSoon title="Inbox" description="Message inbox features are coming soon!" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pricing"
+            element={
+              <ProtectedRoute>
+                <ComingSoon title="Pricing" description="Pricing and subscription management coming soon." />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <ComingSoon title="Settings" description="Settings and preferences are under development." />
               </ProtectedRoute>
             }
           />

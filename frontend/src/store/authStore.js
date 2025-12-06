@@ -33,6 +33,15 @@ export const useAuthStore = create(
       },
 
       /**
+       * Set token only
+       * @param {string} token - Auth token
+       */
+      setToken: (token) => {
+        localStorage.setItem('auth_token', token);
+        set({ token, isAuthenticated: true });
+      },
+
+      /**
        * Update user data
        * @param {object} user - Updated user object
        */

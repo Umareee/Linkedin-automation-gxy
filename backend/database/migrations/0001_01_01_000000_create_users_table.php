@@ -13,12 +13,28 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
-            $table->rememberToken();
+
+            // OAuth fields (PRIMARY authentication method)
+            $table->string('linkedin_id')->unique(); // LinkedIn's unique user ID
+            $table->string('name'); // Full name from LinkedIn
+            $table->string('email')->unique(); // Email from LinkedIn
+            $table->string('profile_url')->nullable(); // LinkedIn profile URL
+            $table->string('profile_image_url')->nullable(); // Profile photo URL
+
+            // OAuth tokens (encrypted)
+            $table->text('oauth_access_token'); // LinkedIn API access token
+            $table->text('oauth_refresh_token')->nullable(); // Refresh token (if provided)
+            $table->timestamp('token_expires_at'); // Token expiration timestamp
+
+            // Account status
+            $table->boolean('is_active')->default(true); // Whether account is active
+            $table->timestamp('last_login_at')->nullable(); // Last login timestamp
+
             $table->timestamps();
+
+            // Indexes for performance
+            $table->index('linkedin_id');
+            $table->index('email');
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {

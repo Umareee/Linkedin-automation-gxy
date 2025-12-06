@@ -1,11 +1,11 @@
 /**
  * Layout Component
  *
- * Main application layout wrapper with header.
+ * Main application layout wrapper with sidebar navigation.
  * Wraps all authenticated pages.
  */
 
-import Header from './Header';
+import Sidebar from './Sidebar';
 
 /**
  * Layout wrapper component
@@ -15,10 +15,14 @@ import Header from './Header';
 const Layout = ({ children }) => {
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
+      {/* Sidebar */}
+      <Sidebar />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {children}
+      {/* Main Content */}
+      <main className="ml-64 min-h-screen">
+        <div className="p-8">
+          {children}
+        </div>
       </main>
     </div>
   );

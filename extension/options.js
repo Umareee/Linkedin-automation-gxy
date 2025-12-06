@@ -1,38 +1,19 @@
 /**
- * Options Page Script
+ * Options Page Script (OAuth Version)
  *
- * Handles login, logout, and settings management.
+ * Handles LinkedIn OAuth login, logout, and settings management.
  */
 
 // DOM elements
 let authSection;
 let settingsSection;
-
-// Tab elements
-let loginTabBtn;
-let signupTabBtn;
-let loginTab;
-let signupTab;
-
-// Login form elements
-let loginForm;
-let loginEmailInput;
-let loginPasswordInput;
-let loginBtn;
-let loginMessage;
-
-// Signup form elements
-let signupForm;
-let signupNameInput;
-let signupEmailInput;
-let signupPasswordInput;
-let signupPasswordConfirmInput;
-let signupBtn;
-let signupMessage;
-
-// Settings elements
-let currentUserEl;
+let linkedInLoginBtn;
+let authMessage;
 let logoutBtn;
+let userNameEl;
+let userEmailEl;
+let userAvatarEl;
+let userAvatarPlaceholder;
 let apiUrlInput;
 let saveApiUrlBtn;
 let apiUrlMessage;
@@ -50,32 +31,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Get DOM elements
   authSection = document.getElementById('auth-section');
   settingsSection = document.getElementById('settings-section');
-
-  // Tab elements
-  loginTabBtn = document.getElementById('login-tab-btn');
-  signupTabBtn = document.getElementById('signup-tab-btn');
-  loginTab = document.getElementById('login-tab');
-  signupTab = document.getElementById('signup-tab');
-
-  // Login form elements
-  loginForm = document.getElementById('login-form');
-  loginEmailInput = document.getElementById('login-email');
-  loginPasswordInput = document.getElementById('login-password');
-  loginBtn = document.getElementById('login-btn');
-  loginMessage = document.getElementById('login-message');
-
-  // Signup form elements
-  signupForm = document.getElementById('signup-form');
-  signupNameInput = document.getElementById('signup-name');
-  signupEmailInput = document.getElementById('signup-email');
-  signupPasswordInput = document.getElementById('signup-password');
-  signupPasswordConfirmInput = document.getElementById('signup-password-confirm');
-  signupBtn = document.getElementById('signup-btn');
-  signupMessage = document.getElementById('signup-message');
-
-  // Settings elements
-  currentUserEl = document.getElementById('current-user');
+  linkedInLoginBtn = document.getElementById('linkedin-login-btn');
+  authMessage = document.getElementById('auth-message');
   logoutBtn = document.getElementById('logout-btn');
+  userNameEl = document.getElementById('user-name');
+  userEmailEl = document.getElementById('user-email');
+  userAvatarEl = document.getElementById('user-avatar');
+  userAvatarPlaceholder = document.getElementById('user-avatar-placeholder');
   apiUrlInput = document.getElementById('api-url');
   saveApiUrlBtn = document.getElementById('save-api-url');
   apiUrlMessage = document.getElementById('api-url-message');
@@ -85,13 +47,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadingOverlay = document.getElementById('loading-overlay');
 
   // Set up event listeners
-  loginTabBtn.addEventListener('click', () => switchTab('login'));
-  signupTabBtn.addEventListener('click', () => switchTab('signup'));
-  loginForm.addEventListener('submit', handleLoginSubmit);
-  signupForm.addEventListener('submit', handleSignupSubmit);
+  linkedInLoginBtn.addEventListener('click', handleLinkedInLogin);
   logoutBtn.addEventListener('click', handleLogoutClick);
   saveApiUrlBtn.addEventListener('click', handleSaveApiUrl);
   saveLimitBtn.addEventListener('click', handleSaveLimit);
+
+  // Listen for auth state changes from background script
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.type === 'AUTH_STATE_CHANGED') {
+      console.log('[Options] Auth state changed, reloading...');
+      // Reload the page to update UI
+      window.location.reload();
+    }
+  });
 
   // Load saved values
   await loadSavedSettings();
@@ -120,35 +88,24 @@ async function loadSavedSettings() {
 }
 
 /**
- * Switch between login and signup tabs
- * @param {string} tab - 'login' or 'signup'
+ * Handle LinkedIn OAuth login button click
+ * Opens the webapp in a new tab for OAuth authentication
  */
-function switchTab(tab) {
-  if (tab === 'login') {
-    // Activate login tab
-    loginTabBtn.classList.add('active');
-    signupTabBtn.classList.remove('active');
-    loginTab.classList.add('active');
-    signupTab.classList.remove('active');
+function handleLinkedInLogin() {
+  console.log('[Options] Opening webapp for LinkedIn OAuth...');
 
-    // Clear signup form
-    signupForm.reset();
-    hideMessage(signupMessage);
-  } else if (tab === 'signup') {
-    // Activate signup tab
-    loginTabBtn.classList.remove('active');
-    signupTabBtn.classList.add('active');
-    loginTab.classList.remove('active');
-    signupTab.classList.add('active');
+  // Open webapp login page in new tab
+  chrome.tabs.create({
+    url: 'http://localhost:3000/login',
+    active: true
+  });
 
-    // Clear login form
-    loginForm.reset();
-    hideMessage(loginMessage);
-  }
+  // Show info message
+  showMessage(authMessage, 'Opening login page... Complete the sign-in and this page will update automatically.', 'info');
 }
 
 /**
- * Show auth section (login/signup)
+ * Show auth section (OAuth login)
  */
 function showAuthSection() {
   authSection.classList.remove('hidden');
@@ -157,134 +114,35 @@ function showAuthSection() {
 
 /**
  * Show settings section
+ * Displays user profile information
  */
 async function showSettingsSection() {
   authSection.classList.add('hidden');
   settingsSection.classList.remove('hidden');
 
-  // Display user email
-  const email = await getStoredUserEmail();
-  if (email) {
-    currentUserEl.textContent = email;
-  }
-}
+  // Get user data from storage
+  const user = await getCurrentUser();
 
-/**
- * Handle login form submit
- */
-async function handleLoginSubmit(event) {
-  event.preventDefault();
-
-  const email = loginEmailInput.value.trim();
-  const password = loginPasswordInput.value;
-
-  if (!email || !password) {
-    showMessage(loginMessage, 'Please enter email and password', 'error');
-    return;
-  }
-
-  try {
-    loginBtn.disabled = true;
-    loginBtn.textContent = 'Logging in...';
-    showLoading(true);
-
-    // Attempt login
-    const user = await handleLogin(email, password);
-
-    console.log('[Options] Login successful:', user);
-
-    // Show success message
-    showMessage(loginMessage, 'Login successful!', 'success');
-
-    // Clear form
-    loginPasswordInput.value = '';
-
-    // Switch to settings view after short delay
-    setTimeout(() => {
-      showSettingsSection();
-    }, 1000);
-
-  } catch (error) {
-    console.error('[Options] Login error:', error);
-    showMessage(loginMessage, 'Login failed: ' + error.message, 'error');
-  } finally {
-    loginBtn.disabled = false;
-    loginBtn.textContent = 'Login';
-    showLoading(false);
-  }
-}
-
-/**
- * Handle signup form submit
- */
-async function handleSignupSubmit(event) {
-  event.preventDefault();
-
-  const name = signupNameInput.value.trim();
-  const email = signupEmailInput.value.trim();
-  const password = signupPasswordInput.value;
-  const passwordConfirm = signupPasswordConfirmInput.value;
-
-  // Validation
-  if (!name || !email || !password || !passwordConfirm) {
-    showMessage(signupMessage, 'Please fill in all fields', 'error');
-    return;
-  }
-
-  if (password !== passwordConfirm) {
-    showMessage(signupMessage, 'Passwords do not match', 'error');
-    return;
-  }
-
-  if (password.length < 8) {
-    showMessage(signupMessage, 'Password must be at least 8 characters', 'error');
-    return;
-  }
-
-  try {
-    signupBtn.disabled = true;
-    signupBtn.textContent = 'Creating account...';
-    showLoading(true);
-
-    // Call register endpoint
-    const response = await register(name, email, password, passwordConfirm);
-
-    console.log('[Options] Signup successful:', response);
-
-    // Store token and email
-    await setAuthToken(response.token);
-    await setUserEmail(email);
-
-    // Show success message
-    showMessage(signupMessage, 'Account created successfully!', 'success');
-
-    // Clear form
-    signupForm.reset();
-
-    // Switch to settings view after short delay
-    setTimeout(() => {
-      showSettingsSection();
-    }, 1500);
-
-  } catch (error) {
-    console.error('[Options] Signup error:', error);
-
-    // Handle validation errors
-    let errorMessage = 'Signup failed: ' + error.message;
-
-    if (error.errors) {
-      // Laravel validation errors
-      const errorMessages = Object.values(error.errors).flat();
-      if (errorMessages.length > 0) {
-        errorMessage = errorMessages.join(', ');
-      }
+  if (user) {
+    // Display user name
+    if (user.name) {
+      userNameEl.textContent = user.name;
     }
 
-    showMessage(signupMessage, errorMessage, 'error');
-  } finally {
-    signupBtn.disabled = false;
-    signupBtn.textContent = 'Sign Up';
-    showLoading(false);
+    // Display user email
+    if (user.email) {
+      userEmailEl.textContent = user.email;
+    }
+
+    // Display user avatar
+    if (user.profile_image_url) {
+      userAvatarEl.src = user.profile_image_url;
+      userAvatarEl.classList.remove('hidden');
+      userAvatarPlaceholder.classList.add('hidden');
+    } else {
+      userAvatarEl.classList.add('hidden');
+      userAvatarPlaceholder.classList.remove('hidden');
+    }
   }
 }
 
@@ -302,11 +160,7 @@ async function handleLogoutClick() {
     // Show auth section
     showAuthSection();
 
-    // Clear login form
-    loginEmailInput.value = '';
-    loginPasswordInput.value = '';
-
-    showMessage(loginMessage, 'Logged out successfully', 'success');
+    showMessage(authMessage, 'Logged out successfully', 'success');
 
   } catch (error) {
     console.error('[Options] Logout error:', error);

@@ -130,3 +130,36 @@ export const useDetachTag = () => {
     },
   });
 };
+
+/**
+ * Bulk delete prospects mutation
+ * @returns {object} Mutation object with mutate function
+ */
+export const useBulkDeleteProspects = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (prospectIds) => prospectService.bulkDelete(prospectIds),
+    onSuccess: () => {
+      // Invalidate prospects list and stats
+      queryClient.invalidateQueries({ queryKey: ['prospects'] });
+      queryClient.invalidateQueries({ queryKey: ['prospect-stats'] });
+    },
+  });
+};
+
+/**
+ * Bulk attach tags to prospects mutation
+ * @returns {object} Mutation object with mutate function
+ */
+export const useBulkAttachTags = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ prospectIds, tagIds }) => prospectService.bulkAttachTags(prospectIds, tagIds),
+    onSuccess: () => {
+      // Invalidate prospects list
+      queryClient.invalidateQueries({ queryKey: ['prospects'] });
+    },
+  });
+};

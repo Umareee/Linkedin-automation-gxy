@@ -27,8 +27,14 @@
         <button id="logout-btn" class="btn btn-link">Logout</button>
       </div>
 
+      <!-- Tab buttons -->
+      <div class="tab-buttons">
+        <button id="tab-extract" class="tab-btn active">Extract</button>
+        <button id="tab-campaigns" class="tab-btn">Campaigns</button>
+      </div>
+
       <!-- Extraction section -->
-      <div class="extraction-section">
+      <div id="extraction-section" class="extraction-section">
         <h3>Extract Prospects</h3>
 
         <!-- Status messages -->
@@ -77,6 +83,56 @@
             Last extraction: <strong id="last-count">-</strong> prospects
           </p>
         </div>
+      </div>
+
+      <!-- Campaigns section -->
+      <div id="campaigns-section" class="campaigns-section hidden">
+        <h3>Active Campaigns</h3>
+
+        <!-- Campaign status -->
+        <div id="campaign-status" class="campaign-status">
+          <div id="queue-status-box" class="queue-status-box">
+            <span id="queue-status-icon" class="status-icon">&#9679;</span>
+            <span id="queue-status-text">Not running</span>
+          </div>
+          <p id="queue-message" class="queue-message"></p>
+        </div>
+
+        <!-- Campaign list -->
+        <div id="campaign-list" class="campaign-list">
+          <p class="no-campaigns">No active campaigns</p>
+        </div>
+
+        <!-- Queue stats -->
+        <div id="queue-stats" class="queue-stats hidden">
+          <div class="stat-row">
+            <span>Completed today:</span>
+            <strong id="stats-completed">0</strong>
+          </div>
+          <div class="stat-row">
+            <span>Failed:</span>
+            <strong id="stats-failed">0</strong>
+          </div>
+          <div class="stat-row">
+            <span>Daily limit:</span>
+            <strong id="stats-limit">50</strong>
+          </div>
+        </div>
+
+        <!-- Queue control buttons -->
+        <div class="queue-controls">
+          <button id="start-queue-btn" class="btn btn-primary">
+            Start Queue
+          </button>
+          <button id="stop-queue-btn" class="btn btn-danger hidden">
+            Stop Queue
+          </button>
+        </div>
+
+        <!-- Refresh button -->
+        <button id="refresh-campaigns-btn" class="btn btn-link">
+          Refresh
+        </button>
       </div>
     </div>
 
